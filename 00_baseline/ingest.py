@@ -28,46 +28,33 @@ def prepare_documents(data):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=Config.CHUNK_SIZE,
         chunk_overlap=Config.CHUNK_OVERLAP,
-        separators=["\n\n", "\n", " ", ""]
+        separators=["\n\n", " ", ""]
     )
     
     documents = []
     print(f"Processing {len(data)} records for V0 Ingestion...")
     
     for loop_idx, item in enumerate(tqdm(data)):
+        problem = item.get('problem', '')
         contents = item.get('contents', '')
-        
-        # Extract metadata from contents_summary
-        title = ""
-        problem = ""
-        
-        summary_raw = item.get('contents_summary')
-        if isinstance(summary_raw, str):
-            try:
-                summary_json = json.loads(summary_raw)
-                title = summary_json.get('title', '')
-                problem = summary_json.get('problems', '')
-            except:
-                pass
-        elif isinstance(summary_raw, dict):
-            title = summary_raw.get('title', '')
-            problem = summary_raw.get('problems', '')
-            
-        # Fallback to root 'problem' if not found in summary (optional, but good for safety)
-        if not problem:
-            problem = item.get('problem', '')
+        action = item.get('action', '')
+        site = item.get('site', '')
+        category = item.get('category', '')
+        date = item.get('date', '')
 
-        merged_text = f"Problem: {problem}\n\nContents: {contents}"
+        merged_text = f"[Content]\n{contents}\n\n[Problems]\n{problem}\n\n[Action]\n{action}"
         
         # Create chunks
         chunks = text_splitter.create_documents([merged_text])
         
         for chunk in chunks:
-            # V0 Spec: id, vector, text, title. NO Category Metadata.
+            # V0 Spec: id, vector, text. NO Category Metadata.
             doc_record = {
                 "text": chunk.page_content,
-                "title": title,
-                "idx": str(item.get('idx', loop_idx)) # Use idx as doc_code (fallback to loop index)
+                "idx": str(item.get('idx', loop_idx)), # Use idx as doc_code (fallback to loop index)
+                "site": site,
+                "category": category,
+                "date": date
             }
             documents.append(doc_record)
             
@@ -91,14 +78,15 @@ def ingest_to_milvus(documents):
     # id: Int64 (PK)
     # vector: FloatVector (Dim: 1024)
     # text: VarChar
-    # title: VarChar
     
     schema = MilvusClient.create_schema(auto_id=True, enable_dynamic_field=True)
     schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True, auto_id=True)
     schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1024) # bge-m3 dim
     schema.add_field(field_name="text", datatype=DataType.VARCHAR, max_length=65535)
-    schema.add_field(field_name="title", datatype=DataType.VARCHAR, max_length=1024)
     schema.add_field(field_name="idx", datatype=DataType.VARCHAR, max_length=128) # Added doc_code
+    schema.add_field(field_name="site", datatype=DataType.VARCHAR, max_length=128)
+    schema.add_field(field_name="category", datatype=DataType.VARCHAR, max_length=512)
+    schema.add_field(field_name="date", datatype=DataType.VARCHAR, max_length=32)
     
     index_params = client.prepare_index_params()
     index_params.add_index(
@@ -134,8 +122,10 @@ def ingest_to_milvus(documents):
                 record = {
                     "vector": vector,
                     "text": doc['text'],
-                    "title": doc['title'],
-                    "idx": str(doc['idx']) # Ensure string
+                    "idx": str(doc['idx']), # Ensure string
+                    "site": doc['site'],
+                    "category": doc['category'],
+                    "date": doc['date']
                     # id is auto-generated
                 }
                 insert_data.append(record)
@@ -151,7 +141,9 @@ def ingest_to_milvus(documents):
 
 if __name__ == "__main__":
     try:
-        data = load_data(Config.DATA_PATH)
+    # Use data_v1.json as requested
+        data_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "99_data", "data_v1.json")
+        data = load_data(data_path)
         docs = prepare_documents(data)
         ingest_to_milvus(docs)
     except Exception as e:

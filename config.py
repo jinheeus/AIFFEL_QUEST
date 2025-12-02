@@ -14,8 +14,8 @@ class Config:
     # Milvus
     MILVUS_URI = os.getenv("MILVUS_URI", "./milvus_demo.db")
     MILVUS_TOKEN = os.getenv("MILVUS_TOKEN", "")
-    MILVUS_COLLECTION_NAME_V0 = "audit_reports_v0"
-    MILVUS_COLLECTION_NAME_V1 = "audit_reports_v1"
+    MILVUS_COLLECTION_NAME_V0 = "data_v1"
+    MILVUS_COLLECTION_NAME_V1 = "data_v2"
     
     # Neo4j
     NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")

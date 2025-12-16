@@ -4,7 +4,7 @@ from state import AgentState
 from model_factory import ModelFactory
 
 
-# Defense Agent (Auditee)
+# 피감기관 에이전트 (Auditee) - 변호인 역할
 def defense_agent(state: AgentState) -> AgentState:
     """
     [Node] 피감기관(Auditee) 역할 (변호인)
@@ -18,7 +18,7 @@ def defense_agent(state: AgentState) -> AgentState:
         state.get("documents", []) + state.get("graph_context", [])
     )[:3000]
 
-    # HCX Heavy for creative defense
+    # 창의적 방어를 위해 Heavy 모델 사용 (HCX Heavy for creative defense)
     llm = ModelFactory.get_rag_model(level="heavy", temperature=0.7)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -74,7 +74,7 @@ def defense_agent(state: AgentState) -> AgentState:
     return state
 
 
-# Prosecution Agent (Auditor)
+# 감사관 에이전트 (Auditor) - 검사 역할
 def prosecution_agent(state: AgentState) -> AgentState:
     """
     [Node] 감사관(Auditor) 역할 (검사)
@@ -85,7 +85,7 @@ def prosecution_agent(state: AgentState) -> AgentState:
     defense = state.get("defense_argument", "")
     regs = state.get("matched_regulations", [])
 
-    # HCX Heavy for strict logic
+    # 엄격한 논리를 위해 Heavy 모델 사용 (HCX Heavy for strict logic)
     llm = ModelFactory.get_rag_model(level="heavy", temperature=0.2)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -127,7 +127,7 @@ def prosecution_agent(state: AgentState) -> AgentState:
     return state
 
 
-# Judge (Final Verdict)
+# 감사위원장 (Judge) - 최종 판결
 def judge_verdict(state: AgentState) -> AgentState:
     """
     [Node] 감사위원장(Judge) 역할 (판사)
@@ -185,7 +185,7 @@ def judge_verdict(state: AgentState) -> AgentState:
         )
         state["final_judgment"] = verdict
         state["answer"] = verdict  # 최종 답변을 판결문으로 덮어씀
-        print(f" -> 최종 판결 완료.")
+        print(" -> 최종 판결 완료.")
     except Exception as e:
         print(f" -> 판결 생성 실패: {e}")
         state["answer"] = "판결 생성 실패."

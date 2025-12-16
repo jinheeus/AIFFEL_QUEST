@@ -4,20 +4,20 @@ from pydantic import BaseModel, Field
 from state import AgentState
 from model_factory import ModelFactory
 
-# --- 1. Grade Documents ---
+# --- 1. 문서 평가 (Grade Documents) ---
 
 
 class GradeResult(BaseModel):
-    """Relevance check result"""
+    """문서 적합성 평가 결과"""
 
-    reasoning: str = Field(description="Why the document is relevant or not")
-    relevant: str = Field(description="'yes' or 'no'")
+    reasoning: str = Field(description="문서가 적합한지/부적합한지에 대한 추론")
+    relevant: str = Field(description="'yes' 또는 'no'")
 
 
 def grade_documents(state: AgentState) -> AgentState:
     """
-    [Node] Retrieved documents grading.
-    If document is irrelevant, we will rewrite the query.
+    [Node] 검색된 문서를 평가합니다.
+    문서가 부적합하다면, 질문을 재작성(Rewrite)합니다.
     """
     print(f"\n[Node] grade_documents: 문서 적합성 평가 중...")
 
@@ -38,9 +38,9 @@ def grade_documents(state: AgentState) -> AgentState:
         [
             (
                 "system",
-                """You are a strict grader assessing the relevance of a retrieved document to a user question.
-        If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant.
-        Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+                """당신은 검색된 문서가 사용자 질문과 관련이 있는지 평가하는 채점관입니다.
+        문서에 질문과 관련된 키워드나 의미가 포함되어 있다면 'yes'로 평가하세요.
+        문서가 질문과 관련이 있는지 여부를 'yes' 또는 'no'의 이진 점수로 표시하세요.
         
         Output JSON format:
         {{
@@ -74,12 +74,12 @@ def grade_documents(state: AgentState) -> AgentState:
         return {"grade_status": "success"}
 
 
-# --- 2. Rewrite Query ---
+# --- 2. 질문 재작성 (Rewrite Query) ---
 
 
 def rewrite_query(state: AgentState) -> AgentState:
     """
-    [Node] Rewrite the query to improve retrieval.
+    [Node] 검색 성능을 높이기 위해 질문을 재작성합니다.
     """
     print(f"\n[Node] rewrite_query: 질문 재작성 중...")
 
@@ -89,7 +89,7 @@ def rewrite_query(state: AgentState) -> AgentState:
     msg = [
         (
             "system",
-            "You are a helpful assistant that optimizes search queries. Look at the initial query and formulate a better query for a semantic search engine. Output ONLY the rewritten query string.",
+            "당신은 검색 쿼리를 최적화하는 유용한 비서입니다. 초기 질문을 보고 의미 기반 검색엔진에 적합한 더 나은 쿼리를 작성하세요. 오직 재작성된 쿼리 문자열만 출력하세요.",
         ),
         ("human", f"Initial Query: {query}"),
     ]

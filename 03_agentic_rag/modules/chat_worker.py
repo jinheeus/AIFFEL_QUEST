@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from config import Config
+
 from model_factory import ModelFactory
 from state import AgentState
 
@@ -9,7 +9,7 @@ def chat_worker(state: AgentState):
     print("--- [ChatWorker] Handling Chit-Chat ---")
     query = state["query"]
 
-    # Simple Chat Prompt
+    # 단순 대화 프롬프트 정의 (Simple Chat Prompt)
     prompt = ChatPromptTemplate.from_template(
         """
         You are a helpful AI Assistant specializing in Korean Audit & Public Data.
@@ -38,12 +38,12 @@ def chat_worker(state: AgentState):
         """
     )
 
-    llm = ModelFactory.get_rag_model(level="light")  # Use Light model for chat
+    llm = ModelFactory.get_rag_model(level="light")  # 채팅용 경량 모델 사용
     chain = prompt | llm | StrOutputParser()
 
     try:
         response = chain.invoke({"query": query})
         return {"answer": response}
     except Exception as e:
-        print(f"Error in ChatWorker: {e}")
+        print(f"[ChatWorker] 오류 발생: {e}")
         return {"answer": "죄송합니다. 일시적인 오류가 발생했습니다."}

@@ -1,5 +1,3 @@
-import json
-from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from state import AgentState
@@ -7,10 +5,10 @@ from state import AgentState
 # --- Initialize LLM ---
 from model_factory import ModelFactory
 
-# --- Initialize LLM ---
+# --- LLM 초기화 ---
 llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
 
-# --- Prompts (Ported from Team Notebook) ---
+# --- 프롬프트 정의 ---
 
 field_selector_system = """
 [역할]
@@ -234,10 +232,10 @@ strategy_decider_prompt = ChatPromptTemplate.from_messages(
 strategy_decider_chain = strategy_decider_prompt | llm | JsonOutputParser()
 
 
-# --- Node Functions ---
+# --- 노드 함수 정의 (Node Functions) ---
 
 
-# --- Context Resolver (New) ---
+# --- 문맥 해결기 (Context Resolver) ---
 
 context_resolver_system = """
 [역할]
@@ -287,11 +285,11 @@ def field_selector(state: AgentState) -> dict:
         state.get("search_query") if state.get("search_query") else state["query"]
     )
 
-    # 1. Resolve Context (If history exists)
+    # 1. 문맥 해결 (대화 기록이 있는 경우)
     history = state.get("messages", [])
     resolved_query = current_input
 
-    # Only resolve if history has at least 1 turn (User + AI)
+    # 대화 기록이 최소 1턴 이상(사용자+AI)일 때만 수행
     if len(history) >= 2:
         try:
             # Format history for LLM (Last 4 messages for brevity)
@@ -310,12 +308,12 @@ def field_selector(state: AgentState) -> dict:
             print(f" -> Context Resolution Failed: {e}")
             resolved_query = current_input
 
-    # 2. Select Fields using Resolved Query
+    # 2. 해결된 질문을 사용하여 필드 선택
     try:
         result = field_selector_chain.invoke({"question": resolved_query})
     except Exception as e:
         print(f"Error in field_selector: {e}")
-        # Fallback
+        # 예외 발생 시 기본값 사용
         result = {"selected_fields": ["outline", "problems"], "cot": ["Error fallback"]}
 
     new_selected = result.get("selected_fields", [])
@@ -324,7 +322,7 @@ def field_selector(state: AgentState) -> dict:
     current_fields = state.get("selected_fields", [])
     merged_fields = list(set(current_fields + new_selected))
 
-    # Force basics
+    # 필수 필드 강제 포함 (Force basics)
     if "outline" not in merged_fields:
         merged_fields.append("outline")
     if "problems" not in merged_fields:
@@ -349,10 +347,8 @@ def validator(state: AgentState) -> dict:
         print(" -> No documents found. Invalid.")
         return {"is_valid": "no", "validator_cot": ["문서 없음"]}
 
-    # Context format for Validator
-    # If documents is a list of strings, join them.
-    # If documents is a list of Document objects, extract page_content
-    # Our "documents" in State is List[str] usually (from retriever)
+    # 검증기를 위한 문서 병합 포맷팅 (Context format for Validator)
+    # 문서가 문자열 리스트인 경우와 Document 객체 리스트인 경우를 구분하여 처리
     if isinstance(documents[0], str):
         context = "\n\n".join(documents)
     else:
@@ -392,7 +388,7 @@ def strategy_decider(state: AgentState) -> dict:
         )
     except Exception as e:
         print(f"Error in strategy_decider: {e}")
-        # Fallback to rewrite
+        # 예외 발생 시 재작성 전략으로 안전하게 처리
         result = {"strategy": "rewrite_query", "new_query": question}
 
     strategy = result.get("strategy", "rewrite_query")

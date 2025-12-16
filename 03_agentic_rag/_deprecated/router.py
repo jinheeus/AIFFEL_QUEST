@@ -12,6 +12,7 @@ router_llm = ChatClovaX(model=Config.LLM_MODEL, temperature=0.1, max_tokens=1024
 def analyze_query(state: AgentState) -> AgentState:
     """
     [Node] 사용자의 질문을 분석하여 카테고리와 페르소나를 결정합니다.
+    (현재 시스템에서는 Supervisor로 대체되어 사용되지 않을 수 있음)
     """
     print(f"\n[Node] analyze_query: 질문 분석 중... '{state['query']}'")
 

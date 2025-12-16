@@ -62,7 +62,7 @@ class VectorRetriever:
             auto_id=True,
         )
 
-        print(f"✅ [VectorRetriever] Initialized. Collection: {self.collection_name}")
+        print(f"[VectorRetriever] Initialized. Collection: {self.collection_name}")
 
     def search_and_merge(
         self, query: str, top_k: int = 5, filters: Dict[str, Any] = {}
@@ -95,7 +95,7 @@ class VectorRetriever:
                 expr=expr,  # Fetch 3x for sufficiency after dedup
             )
         except Exception as e:
-            print(f"   ⚠️ [Vector] Search Error: {e}")
+            print(f"[Vector] Search Error: {e}")
             return []
 
         # 2. Deduplicate & Expand
@@ -131,6 +131,6 @@ _vector_retriever_instance = None
 def get_retriever() -> VectorRetriever:
     global _vector_retriever_instance
     if _vector_retriever_instance is None:
-        print("⚡ [Singleton] Initializing VectorRetriever...")
+        print("[Singleton] Initializing VectorRetriever...")
         _vector_retriever_instance = VectorRetriever()
     return _vector_retriever_instance

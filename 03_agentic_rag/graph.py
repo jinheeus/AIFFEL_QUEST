@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, END
 from state import AgentState
+from config import Config  # Feature Flags
 import sys
 import os
 
@@ -47,11 +48,14 @@ def route_supervisor(state: AgentState):
     if next_step == "chat_worker":
         return "chat_worker"
     elif next_step == "research_worker":
-        # 리서치 작업은 먼저 필드 선택기(의도 파악)로 시작합니다.
         return "field_selector"
     elif next_step == "audit_worker":
-        # 감사 작업은 먼저 사실 관계 추출로 시작합니다.
-        return "extract_facts"
+        # Feature Flag: SOP
+        if Config.ENABLE_SOP:
+            return "extract_facts"
+        else:
+            print(" -> [Config] SOP Disabled. Fallback to Research.")
+            return "field_selector"
     else:
         # 기본값
         return "chat_worker"
@@ -85,6 +89,10 @@ def should_retry(state: AgentState):
 
 
 def route_disposition(state: AgentState):
+    # Feature Flag: Adversarial
+    if not Config.ENABLE_ADVERSARIAL:
+        return END
+
     compliance = state.get("compliance_result", {})
     if isinstance(compliance, dict) and compliance.get("status") == "Violated":
         print(" -> [Route] Violation Detected. Starting Adversarial Simulation.")
@@ -166,7 +174,15 @@ def route_retrieval(state: AgentState):
     if is_valid == "yes" or count >= 3:
         if count >= 3:
             print(" -> [Stop] Max retrieval retries reached. Proceeding anyway.")
-        return "retrieve_graph_context"
+
+        # Feature Flag: Neo4j (Graph RAG)
+        if Config.ENABLE_NEO4J:
+            return "retrieve_graph_context"
+        else:
+            print(" -> [Config] Graph RAG Disabled. Skipping to Generation.")
+            if state.get("category") == "judgment":
+                return "extract_facts"  # Fallback logic if coming from research but originally judgment?
+            return "generate_answer"
     else:
         print(" -> [Retry] Strategy Decision Required.")
         return "strategy_decider"
@@ -178,6 +194,8 @@ workflow.add_conditional_edges(
     {
         "retrieve_graph_context": "retrieve_graph_context",
         "strategy_decider": "strategy_decider",
+        "generate_answer": "generate_answer",
+        "extract_facts": "extract_facts",
     },
 )
 
@@ -238,19 +256,24 @@ workflow.add_edge("judge_verdict", END)
 # 3. Checkpointer (Memory Persistence)
 from langgraph.checkpoint.memory import MemorySaver
 
-try:
-    from redis import Redis
-    from common.memory.redis_checkpointer import RedisSaver
+# 3. Checkpointer (Memory Persistence)
+from langgraph.checkpoint.memory import MemorySaver
 
-    # Try connecting to Redis (assume localhost:6379 for now)
-    # Ideally use Config.REDIS_URL
-    redis_client = Redis(host="localhost", port=6379, db=0)
-    # Check connection
-    redis_client.ping()
-    checkpointer = RedisSaver(redis_client)
-    print("✅ Redis Memory Enabled")
-except Exception as e:
-    print(f"⚠️ Redis unavailable ({e}). Using In-Memory Saver (State is ephemeral).")
+if Config.ENABLE_REDIS:
+    try:
+        from redis import Redis
+        from common.memory.redis_checkpointer import RedisSaver
+
+        # Try connecting to Redis
+        redis_client = Redis(host="localhost", port=6379, db=0)
+        redis_client.ping()
+        checkpointer = RedisSaver(redis_client)
+        print("✅ Redis Memory Enabled")
+    except Exception as e:
+        print(f"⚠️ Redis unavailable ({e}). Fallback to In-Memory.")
+        checkpointer = MemorySaver()
+else:
+    print("ℹ️ Redis Disabled (Config). Using In-Memory Saver.")
     checkpointer = MemorySaver()
 
 # Compile

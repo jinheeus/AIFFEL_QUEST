@@ -51,3 +51,9 @@ class Config:
     DATA_PATH = os.getenv("DATA_PATH", "data_v10.json")
     CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
     CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
+
+    # Feature Flags (Lego Switches)
+    ENABLE_NEO4J = os.getenv("ENABLE_NEO4J", "false").lower() == "true"
+    ENABLE_SOP = os.getenv("ENABLE_SOP", "true").lower() == "true"
+    ENABLE_ADVERSARIAL = os.getenv("ENABLE_ADVERSARIAL", "true").lower() == "true"
+    ENABLE_REDIS = os.getenv("ENABLE_REDIS", "true").lower() == "true"

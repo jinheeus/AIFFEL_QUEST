@@ -6,12 +6,17 @@ import os
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(root_dir)
 
-from modules.shared import rag_pipeline
+from modules.vector_retriever import get_retriever
 import json
 
 
 def debug_milvus():
-    client = rag_pipeline.milvus_client
+    rag_pipeline = get_retriever()
+    # Access underlying pymilvus client
+    # Note: langchain_milvus.Milvus stores it as self.client in recent versions or self.col?
+    # Actually, accessing private attributes might be risky.
+    # But for a debug script, try .client or .pymilvus_client
+    client = rag_pipeline.vector_store.client
     collection_name = "problems"
 
     print(f"Inspecting collection: {collection_name}")

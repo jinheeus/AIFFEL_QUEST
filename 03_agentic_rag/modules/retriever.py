@@ -1,5 +1,5 @@
 from state import AgentState
-from .shared import rag_pipeline
+from .vector_retriever import get_retriever
 
 
 def retrieve_documents(state: AgentState) -> AgentState:
@@ -7,6 +7,9 @@ def retrieve_documents(state: AgentState) -> AgentState:
     [Node] 'search' 카테고리일 때 실행. Vector DB에서 관련 문서를 검색합니다.
     """
     print(f"\n[Node] retrieve_documents: 문서 검색 중... (High-Context Engine)")
+
+    # Lazy Load Retriever
+    rag_pipeline = get_retriever()
 
     try:
         # 1. 문서 검색을 위한 쿼리 결정 (우선순위: search_query -> sub_queries -> query)

@@ -1,5 +1,7 @@
 # **/*.json
+# **/*.csv
 **/*.log
 **/.env
 **/.DS_Store
 **/__pycache__
+00_data/*

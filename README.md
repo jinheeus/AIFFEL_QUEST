@@ -14,20 +14,20 @@ AURA는 공공기관 감사 보고서를 분석하여, 감관들이 더 빠르�
 
 ```mermaid
 graph TD
-    User[User] --> Supervisor[Supervisor Agent<br>(Planner)]
+    User[User] --> Supervisor["Supervisor Agent<br>(Planner)"]
     Supervisor -->|Plan| Router{Router}
     
-    Router -->|Simple Query| Chat[Chat Worker]
-    Router -->|Context Search| Research[Research Worker<br>(Hybrid RAG)]
-    Router -->|Judgment| Audit[Audit Worker<br>(SOP Agent)]
+    Router -->|"Simple Query"| Chat["Chat Worker"]
+    Router -->|"Context Search"| Research["Research Worker<br>(Hybrid RAG)"]
+    Router -->|"Judgment"| Audit["Audit Worker<br>(SOP Agent)"]
     
-    Research -->|Vector| Milvus[(Milvus<br>Vector DB)]
-    Research -->|Graph| Neo4j[(Neo4j<br>Graph DB)]
+    Research -->|Vector| Milvus[("Milvus<br>Vector DB")]
+    Research -->|Graph| Neo4j[("Neo4j<br>Graph DB")]
     
-    Audit -->|Step 1| Fact[Extract Facts]
-    Audit -->|Step 2| Regs[Match Regulations]
-    Audit -->|Step 3| Comp[Evaluate Compliance]
-    Audit -->|Step 4| Report[Disposition Report]
+    Audit -->|"Step 1"| Fact["Extract Facts"]
+    Audit -->|"Step 2"| Regs["Match Regulations"]
+    Audit -->|"Step 3"| Comp["Evaluate Compliance"]
+    Audit -->|"Step 4"| Report["Disposition Report"]
 ```
 
 ### Key Features

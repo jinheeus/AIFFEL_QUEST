@@ -61,7 +61,7 @@ class HighContextRAGPipeline:
                 "uri": Config.MILVUS_URI,
                 "token": Config.MILVUS_TOKEN,
             },
-            collection_name="markdown_rag_hybrid_v1",
+            collection_name="audit_rag_hybrid_v1",
             auto_id=True,
         )
 

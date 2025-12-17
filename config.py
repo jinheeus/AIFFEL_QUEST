@@ -55,5 +55,5 @@ class Config:
     # Feature Flags (Lego Switches)
     ENABLE_NEO4J = os.getenv("ENABLE_NEO4J", "false").lower() == "true"
     ENABLE_SOP = os.getenv("ENABLE_SOP", "true").lower() == "true"
-    ENABLE_ADVERSARIAL = os.getenv("ENABLE_ADVERSARIAL", "true").lower() == "true"
+    ENABLE_ADVERSARIAL = os.getenv("ENABLE_ADVERSARIAL", "false").lower() == "true"
     ENABLE_REDIS = os.getenv("ENABLE_REDIS", "true").lower() == "true"

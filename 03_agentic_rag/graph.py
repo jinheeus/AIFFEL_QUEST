@@ -22,6 +22,7 @@ from modules.advanced_library import (
     validator,
     strategy_decider,
 )
+from modules.metadata_extractor import extract_metadata  # Imported
 
 # SOP 모듈 (감사 절차)
 from modules.sop import (
@@ -48,14 +49,14 @@ def route_supervisor(state: AgentState):
     if next_step == "chat_worker":
         return "chat_worker"
     elif next_step == "research_worker":
-        return "field_selector"
+        return "metadata_extractor"
     elif next_step == "audit_worker":
         # Feature Flag: SOP
         if Config.ENABLE_SOP:
             return "extract_facts"
         else:
             print(" -> [Config] SOP Disabled. Fallback to Research.")
-            return "field_selector"
+            return "metadata_extractor"
     else:
         # 기본값
         return "chat_worker"
@@ -110,6 +111,7 @@ workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("chat_worker", chat_worker)
 
 # 리서치 워커 체인 (고급 RAG)
+workflow.add_node("metadata_extractor", extract_metadata)  # Added
 workflow.add_node("field_selector", field_selector)
 # workflow.add_node("decompose_query", decompose_query) # 단순화를 위해 생략
 workflow.add_node(
@@ -149,7 +151,7 @@ workflow.add_conditional_edges(
     {
         "chat_worker": "chat_worker",
         # "decompose_query": "decompose_query", # 고급 흐름에서는 생략
-        "field_selector": "field_selector",
+        "metadata_extractor": "metadata_extractor",
         "extract_facts": "extract_facts",
     },
 )
@@ -158,7 +160,8 @@ workflow.add_conditional_edges(
 workflow.add_edge("chat_worker", END)
 
 # 리서치 워커 흐름 (적응형 루프)
-# 필드 선택 -> 검색 -> 검증
+# 메타데이터 추출 -> 필드 선택 -> 검색 -> 검증
+workflow.add_edge("metadata_extractor", "field_selector")
 workflow.add_edge("field_selector", "retrieve_documents")
 workflow.add_edge("retrieve_documents", "validator")
 

@@ -349,11 +349,21 @@ def validator(state: AgentState) -> dict:
 
     # 검증기를 위한 문서 병합 포맷팅 (Context format for Validator)
     # 문서가 문자열 리스트인 경우와 Document 객체 리스트인 경우를 구분하여 처리
+    MAX_CTX_LEN = 1500
     if isinstance(documents[0], str):
-        context = "\n\n".join(documents)
+        context = "\n\n".join(
+            [d[:MAX_CTX_LEN] + "..." if len(d) > MAX_CTX_LEN else d for d in documents]
+        )
     else:
         # Assuming LangChain Documents
-        context = "\n\n".join([d.page_content for d in documents])
+        context = "\n\n".join(
+            [
+                d.page_content[:MAX_CTX_LEN] + "..."
+                if len(d.page_content) > MAX_CTX_LEN
+                else d.page_content
+                for d in documents
+            ]
+        )
 
     try:
         result = validator_chain.invoke({"question": question, "context": context})

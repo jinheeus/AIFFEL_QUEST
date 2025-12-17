@@ -49,7 +49,7 @@ class VectorRetriever:
         # Let's override for safety or better, add to Config.
 
         self.collection_name = (
-            "markdown_rag_hybrid_v1"  # Hardcoded in pipeline.py, moving here.
+            "audit_rag_hybrid_v1"  # Updated to JSON-Native Hybrid Collection
         )
         # Re-init with correct collection if different
         self.vector_store = Milvus(
@@ -76,14 +76,23 @@ class VectorRetriever:
         # Filters can be applied here if Milvus supports expr
         expr = None
         if filters:
-            # Simple implementation for equality filters
-            # e.g. filters={'source_type': 'BAI'} -> expr="source_type == 'BAI'"
+            # Enhanced Filtering (Equality & Partial Match)
+            # Milvus supports `text like "prefix%"` or relational operators
             conditions = []
             for k, v in filters.items():
                 if isinstance(v, str):
-                    conditions.append(f"{k} == '{v}'")
+                    # For string fields like 'date' or 'company_name', use LIKE for flexibility
+                    # However, strictly structured codes like 'company_code' might want exact match.
+                    # Current strategy: Use LIKE for everything string-based for maximum recall,
+                    # unless it's a specific ID.
+                    if k in ["idx"]:  # Integer fields
+                        conditions.append(f"{k} == {v}")
+                    else:
+                        # Use partial match for strings (wildcard)
+                        conditions.append(f'{k} like "{v}%"')
                 else:
                     conditions.append(f"{k} == {v}")
+
             if conditions:
                 expr = " and ".join(conditions)
                 print(f"   [Vector] Applying Filter Expr: {expr}")

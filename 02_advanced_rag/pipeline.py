@@ -14,7 +14,15 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from pymilvus import MilvusClient
 from sentence_transformers import CrossEncoder
+from rank_bm25 import BM25Okapi
+from kiwipiepy import Kiwi
+from langchain_core.documents import Document
 from config import Config
+
+try:
+    from data_loader import load_documents_from_milvus
+except ImportError:
+    from .data_loader import load_documents_from_milvus
 
 
 class HighContextRAGPipeline:
@@ -65,6 +73,38 @@ class HighContextRAGPipeline:
             auto_id=True,
         )
 
+        # 4. Sparse (BM25) Init
+        print("🏗️  Building BM25 Index (This may take a few seconds)...")
+        self.tokenizer = Kiwi()
+
+        # Load Corpus from Milvus
+        raw_docs = load_documents_from_milvus(
+            self.milvus_client, "audit_rag_hybrid_v1", batch_size=200
+        )
+
+        # Structure for BM25
+        self.bm25_corpus = []  # List of list of tokens
+        self.bm25_docs = []  # List of Document objects (1:1 with corpus)
+        self.id_to_doc = {}  # Hash(text) -> Document(metadata) - For RRF lookup
+
+        for i, d in enumerate(raw_docs):
+            text = d.get("text", "")
+            parent = d.get("parent_text", "")
+
+            # Tokenize text for index
+            tokens = [t.form for t in self.tokenizer.tokenize(text)]
+            self.bm25_corpus.append(tokens)
+
+            # Create Document object
+            doc_obj = Document(page_content=text, metadata={"parent_text": parent})
+            self.bm25_docs.append(doc_obj)
+
+            # Also store in dict for fast lookup by content (for Dense results)
+            self.id_to_doc[text] = doc_obj
+
+        self.bm25 = BM25Okapi(self.bm25_corpus)
+        print(f"✅ BM25 Index Built with {len(self.bm25_corpus)} docs.")
+
         # 3. Prompts
         self.gen_system_prompt = """
 당신은 공공기관 감사보고서 기반 "High-Context RAG" 어시스턴트입니다.
@@ -93,44 +133,114 @@ class HighContextRAGPipeline:
         )
 
     def search_and_merge(
-        self, query: str, top_k: int = 5, filters: Dict[str, Any] = {}
+        self,
+        query: str,
+        top_k: int = 5,
+        filters: Dict[str, Any] = {},
+        use_hyde: bool = False,
+        use_reranker: bool = True,
     ) -> List[str]:
         """
-        Modified for 'Hybrid Strategy':
-        Since we already enriched 'parent_text' during ingestion,
-        we don't need complex ID-based reconstruction.
-        Just retrieve top chunks and return their 'parent_text'.
+        Hybrid Strategy (Dense + Sparse) + Reranker
         """
-        print(f"1. [Search] Searching 'hybrid' for: '{query}'")
+        print(f"1. [Search] Searching '{query}'...")
 
-        # Target Collection
-        target = self.vector_stores["hybrid"]
+        # --- 1. Dense Retrieval (Milvus) ---
+        dense_results = self.vector_stores["hybrid"].similarity_search(
+            query, k=50
+        )  # Fetch 50
+        print(f"   [Dense] Retrieved {len(dense_results)} docs.")
 
-        # Search
-        # We need 'parent_text' from metadata.
-        # LangChain's similarity_search returns Documents with metadata.
-        results = target.similarity_search(query, k=top_k * 2)
+        # --- 2. Sparse Retrieval (BM25) ---
+        tokenized_query = self.tokenizer.tokenize(query)
+        # Get simplified string tokens for BM25
+        q_tokens = [t.form for t in tokenized_query]
 
-        # Deduplicate by parent_text (or doc_id) to avoid redundancy
-        seen = set()
-        final_docs = []
+        sparse_docs = self.bm25.get_top_n(q_tokens, self.bm25_docs, n=50)
+        print(f"   [Sparse] Retrieved {len(sparse_docs)} docs.")
 
-        for doc in results:
-            parent_text = doc.metadata.get("parent_text")
-            if not parent_text:
-                # Fallback to text if parent_text missing
-                parent_text = doc.page_content
+        # --- 3. Hybrid Fusion (RRF) ---
+        # Map content -> rank (smaller is better)
+        dense_ranks = {doc.page_content: i for i, doc in enumerate(dense_results)}
+        sparse_ranks = {doc.page_content: i for i, doc in enumerate(sparse_docs)}
 
-            # Simple hash check for dedup
-            h = hash(parent_text)
-            if h not in seen:
-                seen.add(h)
-                final_docs.append(parent_text)
+        all_content = set(dense_ranks.keys()) | set(sparse_ranks.keys())
 
-            if len(final_docs) >= top_k:
-                break
+        fused_scores = []
+        k = 60  # RRF constant
 
-        print(f"   -> Retrieved {len(final_docs)} unique contexts.")
+        for content in all_content:
+            rank_d = dense_ranks.get(content, float("inf"))
+            rank_s = sparse_ranks.get(content, float("inf"))
+
+            # RRF Score
+            score = 0.0
+            if rank_d != float("inf"):
+                score += 1.0 / (k + rank_d)
+            if rank_s != float("inf"):
+                score += 1.0 / (k + rank_s)
+
+            fused_scores.append((content, score))
+
+        # Sort by RRF score descending
+        fused_scores.sort(key=lambda x: x[1], reverse=True)
+        top_fusion = fused_scores[:50]  # Take Top 50 Fusion Candidates
+
+        # 4. Prepare for Reranking (Parent Context Extraction)
+        # We need to map the "Child Chunk Text" back to "Parent Context"
+
+        seen_parents = set()
+        candidates = []  # List of parent_text string
+
+        for content, rrf_score in top_fusion:
+            # Lookup Document object
+            # For Dense, we can find it in dense_results list.
+            # For Sparse, we can look in self.id_to_doc
+
+            doc_obj = self.id_to_doc.get(content)
+
+            if not doc_obj:
+                # Fallback: Check dense results if not in id_to_doc key (unlikely if synced)
+                # But Dense keys came from search, so they must be in DB.
+                pass
+
+            if doc_obj:
+                parent_text = doc_obj.metadata.get("parent_text")
+                if not parent_text:
+                    parent_text = content
+
+                h = hash(parent_text)
+                if h not in seen_parents:
+                    seen_parents.add(h)
+                    candidates.append(parent_text)
+
+        print(f"   [Hybrid] Unique Candidates for Reranking: {len(candidates)}")
+
+        # 5. Reranking (Cross-Encoder)
+        if use_reranker and self.reranker and candidates:
+            # Rank candidates (Limit to top 20-30 to save inference time)
+            rerank_pool = candidates[:30]
+
+            # Predict scores for (query, doc) pairs. Always rerank against ORIGINAL query.
+            pairs = [[query, doc] for doc in rerank_pool]
+            scores = self.reranker.predict(pairs)
+
+            # Sort by score descending
+            scored_candidates = sorted(
+                zip(rerank_pool, scores), key=lambda x: x[1], reverse=True
+            )
+
+            # Extract text
+            final_docs = [doc for doc, score in scored_candidates[:top_k]]
+
+            # Debug: Print top reranked scores
+            print(
+                f"   [Reranker] Top Scores: {[f'{s:.4f}' for _, s in scored_candidates[:3]]}"
+            )
+        else:
+            final_docs = candidates[:top_k]
+
+        print(f"   -> Retrieved {len(final_docs)} final contexts.")
         return final_docs
 
     def run(self, query: str):

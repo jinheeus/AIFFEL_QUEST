@@ -9,11 +9,14 @@ class AgentState(TypedDict):
 
     query: str  # 사용자의 원본 질문
     category: str  # 질문 분류 결과 ('search', 'stats', 'compare' 등)
-    persona: str  # 사용자 페르소나 ('common', 'auditor', 'manager' 등)
+    mode: str  # (New) 실행 모드: 'chat' | 'fast' (Simple Retrieval) | 'deep' (Complex RAG)
+    # persona field removed
     documents: List[str]  # 검색된 문서 컨텍스트 리스트
     graph_context: List[str]  # (New) 그래프 DB 검색 결과 리스트
     sub_queries: List[str]  # 분해된 하위 질문 리스트
     messages: List[Dict[str, Any]]  # 대화 기록 (Chat History)
+    summary: str  # (New) 대화 내용을 요약한 장기 기억 (Long-term Memory)
+    persist_documents: List[Any]  # (New) 이전 턴의 문서 컨텍스트 (Reference용)
 
     # 슈퍼바이저 필드 (계획 및 라우팅)
     plan: List[str]  # 계획된 단계 리스트 (예: ["search", "verify", "answer"])
@@ -32,9 +35,14 @@ class AgentState(TypedDict):
     analysis_decision: str  # 전략 결정 결과 ("rewrite_query"/"update_fields")
     strategy_decider_cot: List[str]  # 전략 결정 추론 과정 (CoT)
 
+    # Modular RAG Verification (Phase 4)
+    is_hallucinated: str  # "yes" or "no"
+    is_useful: str  # "yes" or "no"
+
     # SOP 필드 (Phase 3: 표준감사절차)
     facts: dict  # 추출된 사실 관계
     matched_regulations: list  # 매칭된 관련 법령
+    sop_context: str  # (New) 생성기에 제공할 SOP/규정 컨텍스트
     compliance_result: str  # 규정 위반 여부 판정 결과
 
     # 적대적 감사 필드 (Phase 3.2: 모의 재판)

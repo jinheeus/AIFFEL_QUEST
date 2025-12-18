@@ -13,9 +13,8 @@ echo "🚀 Starting Agentic RAG Chatbot System..."
 
 # 1. Start Backend
 echo "🔹 [Backend] Starting FastAPI Server on port 8000..."
-# Kill existing port 8000
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-python 04_web_app/backend/main.py > backend.log 2>&1 &
+export PYTHONUNBUFFERED=1
+nohup python 04_web_app/backend/main.py > backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   -> Backend running (PID: $BACKEND_PID). Logs at backend.log"
 

@@ -14,27 +14,37 @@ AURA는 공공기관 감사 보고서를 분석하여, 감관들이 더 빠르�
 
 ```mermaid
 graph TD
-    User[User] --> Supervisor["Supervisor Agent<br>(Planner)"]
-    Supervisor -->|Plan| Router{Router}
+    User[User] --> Router{"Semantic Router"}
     
-    Router -->|"Simple Query"| Chat["Chat Worker"]
-    Router -->|"Context Search"| Research["Research Worker<br>(Hybrid RAG)"]
-    Router -->|"Judgment"| Audit["Audit Worker<br>(SOP Agent)"]
+    %% Routing Paths
+    Router -->|"Deep Reasoning"| Hybrid["Hybrid Retriever"]
+    Router -->|"Metadata/Fast"| SQL["SQL Retriever"]
+    Router -->|"Simple Query"| Chat["Chat Generator"]
     
-    Research -->|Vector| Milvus[("Milvus<br>Vector DB")]
-    Research -->|Graph| Neo4j[("Neo4j<br>Graph DB")]
+    %% SQL Path
+    SQL --> Generate
+
+    %% Corrective RAG (CRAG)
+    Hybrid --> GradeDocs{"Grade Docs<br>(Relevant?)"}
+    GradeDocs -->|Yes| Generate["Generator<br>(Answer Question)"]
+    GradeDocs -->|No| Rewrite["Query Rewriter"]
+    Rewrite --> Hybrid
     
-    Audit -->|"Step 1"| Fact["Extract Facts"]
-    Audit -->|"Step 2"| Regs["Match Regulations"]
-    Audit -->|"Step 3"| Comp["Evaluate Compliance"]
-    Audit -->|"Step 4"| Report["Disposition Report"]
+    %% Self-RAG (Verification)
+    Generate --> GradeHallu{"Hallucination?<br>(Grounded?)"}
+    
+    GradeHallu -->|"Yes (Fail)"| Generate
+    GradeHallu -->|"No (Pass)"| GradeAnswer{"Answers<br>Question?"}
+    
+    GradeAnswer -->|Yes| End(["Final Output"])
+    GradeAnswer -->|"No (Fail)"| Rewrite
 ```
 
 ### Key Features
 - **🧠 Agentic RAG (LangGraph)**: 슈퍼바이저(Supervisor)가 질문의 의도를 파악하고, 최적의 작업자(Worker)에게 업무를 위임합니다.
 - **🕸️ Hybrid Retrieval**: 
   - **Milvus**: 비정형 텍스트(판례, 감사 보고서 본문) 검색
-  - **Neo4j**: 구조화된 데이터(법령, 조직, 감 사 관계) 검색
+  - **SQLite**: 정형 메타데이터(날짜, 기관명, 카테고리) 정밀 검색 (**New!**)
 - **📜 SOP (Standard Audit Procedure)**: 실제 감사관의 사고 과정(사실추출 -> 규정매칭 -> 위반판단 -> 처분결정)을 모방한 논리적 추론 파이프라인.
 - **⚡ Adaptive Retrieval**: 검색 결과가 빈약할 경우, 에이전트가 스스로 쿼리를 재작성(Reformulation)하거나 필드를 확장하여 재검색합니다.
 
@@ -48,7 +58,7 @@ graph TD
 | **Orchestration** | LangChain, LangGraph |
 | **Backend** | FastAPI, Python 3.10+ |
 | **Frontend** | Next.js 14, React, TailwindCSS |
-| **Database** | Milvus (Vector), Neo4j (Graph), Redis (Memory) |
+| **Database** | Milvus (Vector), SQLite (Meta), Redis (Memory) |
 | **Preprocessing** | Docling (PDF Parsing) |
 
 ---
@@ -58,7 +68,7 @@ graph TD
 ### 1. Prerequisites
 - Python 3.10+
 - Node.js 18+
-- Docker (for Milvus/Neo4j/Redis)
+- Docker (for Milvus/SQLite/Redis)
 
 ### 2. Installation
 ```bash
@@ -99,6 +109,7 @@ AURA/
 ├── experiments/          # Experimental Notebooks & Scripts (Refactored)
 └── start_chatbot.sh      # Unified Startup Script
 ```
+
 
 ---
 

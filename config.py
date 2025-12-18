@@ -42,18 +42,10 @@ class Config:
     MILVUS_COLLECTION_NAME_V1 = "data_v2"
     MILVUS_COLLECTION_NAME_MARKDOWN = "markdown_rag_parent_child_v1"
 
-    # Neo4j
-    NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USERNAME = os.getenv("NEO4J_USERNAME", "neo4j")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
-
     # Data
     DATA_PATH = os.getenv("DATA_PATH", "data_v10.json")
     CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
     CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
 
     # Feature Flags (Lego Switches)
-    ENABLE_NEO4J = os.getenv("ENABLE_NEO4J", "false").lower() == "true"
-    ENABLE_SOP = os.getenv("ENABLE_SOP", "true").lower() == "true"
-    ENABLE_ADVERSARIAL = os.getenv("ENABLE_ADVERSARIAL", "false").lower() == "true"
     ENABLE_REDIS = os.getenv("ENABLE_REDIS", "true").lower() == "true"

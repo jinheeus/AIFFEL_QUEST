@@ -35,9 +35,19 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    print("🔹 [Startup] Warming up VectorRetriever (Loading BM25 Index)...")
+    # Initialize singleton to trigger BM25 build/load
+    from modules.vector_retriever import get_retriever
+
+    get_retriever()
+    print("🔹 [Startup] VectorRetriever Ready!")
+
+
 class ChatRequest(BaseModel):
     query: str
-    persona: str = "common"
+    # persona field removed
     history: list = []  # (New) history input
     session_id: str = "default_session"  # New: for persistent memory
 
@@ -59,21 +69,23 @@ NODE_NAMES = {
     "defense_agent": "소명 논리 시뮬레이션",
     "prosecution_agent": "감사 취약점 점검",
     "judge_verdict": "최종 판단 도출",
+    "generate": "답변 생성",
     "generate_answer": "답변 생성",
     "reflect_answer": "답변 정합성 검증",
 }
 
 
 async def event_generator(
-    query: str, persona: str, history: list, session_id: str
+    query: str, history: list, session_id: str
 ) -> AsyncGenerator[str, None]:
     """
     Yields Server-Sent Events (SSE) for the frontend.
     """
     inputs = {
         "query": query,
-        "persona": persona,
-        "documents": [],
+        # persona field removed
+        # Do NOT initialize documents=[], or it wipes previous state before Router can save it!
+        # "documents": [],
         "messages": history,  # Pass history to graph state
         "reflection_count": 0,
     }
@@ -86,6 +98,8 @@ async def event_generator(
 
     try:
         # Use astream to get async node updates
+        # [Fix] Increase recursion limit for complex RAG flows
+        config["recursion_limit"] = 50
         async for output in rag_app.astream(inputs, config=config):
             for key, value in output.items():
                 print(f"[API Log] Node Completed: {key}")
@@ -101,6 +115,7 @@ async def event_generator(
                 # - 'determine_disposition' (SOP - No Violation case)
                 final_answer_nodes = [
                     "chat_worker",
+                    "generate",
                     "generate_answer",
                     "reflect_answer",
                     "judge_verdict",
@@ -123,10 +138,14 @@ async def event_generator(
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
+    print(f" -> [API] Incoming Session ID: {request.session_id}")
+
+    # [DEBUG] Session ID
+    session_id = request.session_id or "default_session"
+    print(f" -> [API] Session ID: {session_id}")
+
     return StreamingResponse(
-        event_generator(
-            request.query, request.persona, request.history, request.session_id
-        ),
+        event_generator(request.query, request.history, session_id),
         media_type="text/event-stream",
     )
 

@@ -6,7 +6,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
     """
     [Node] 'search' 카테고리일 때 실행. Vector DB에서 관련 문서를 검색합니다.
     """
-    print(f"\n[Node] retrieve_documents: 문서 검색 중... (High-Context Engine)")
+    print(f"\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)")
 
     # Lazy Load Retriever
     rag_pipeline = get_retriever()
@@ -47,11 +47,27 @@ def retrieve_documents(state: AgentState) -> AgentState:
             if docs:
                 all_docs.extend(docs)
 
-        # 3. 중복 제거 (내용 기반 단순 set 연산)
-        unique_docs = list(set(all_docs))
+        # 3. 중복 제거 (Content-based deduplication for Document objects)
+        unique_docs = []
+        seen_content = set()
+
+        for d in all_docs:
+            if d.page_content not in seen_content:
+                unique_docs.append(d)
+                seen_content.add(d.page_content)
 
         if not unique_docs:
-            state["documents"] = ["검색 결과가 없습니다."]
+            # [Fallback] If search failed but we have persistent docs, use them.
+            # This handles cases like "Tell me more about #2" where search might not match new docs
+            # but the user clearly wants to talk about previous docs.
+            persist_docs = state.get("persist_documents", [])
+            if persist_docs:
+                print(
+                    f" -> [Fallback] Search returned 0 results. Using {len(persist_docs)} persisted documents."
+                )
+                state["documents"] = persist_docs
+            else:
+                state["documents"] = ["검색 결과가 없습니다."]
         else:
             state["documents"] = unique_docs
 

@@ -11,8 +11,9 @@ graph TD
         direction TB
         Input(("User Input")) --> Keyword{"Contains<br>'Hello'?"}
         Keyword -- Yes --> ChatNode["Chat Worker<br/>Simple Response"]
-        Keyword -- No --> Classify["LLM Classifier<br/>Intent Analysis"]
+        Keyword -- No --> Classify["LLM Classifier<br/>Intent & Pivot"]
         Classify --> CheckInt{"Intent?"}
+        Classify --> PivotCheck{{"New Topic?<br/>(Context Clear)"}}
     end
 
     %% --- Subgraph: Fast Track (SQL) ---
@@ -101,3 +102,8 @@ graph TD
 4. **Relevant Docs** -> `SOP Retriever` -> SOP/Rules.
 5. **Docs + SOP** -> `Generator` -> Draft Answer.
 6. **Draft Answer** -> `Verification Loop` -> Final Answer.
+
+## Context Persistence Strategy (Memory Pivot)
+To handle multi-turn conversations effectively, the Router employs a **Pivot Detection** mechanism:
+- **New Topic (Pivot)**: If the user asks about a new entity (e.g., "Switching from Incheon to Gas Corp"), the Router sets `is_new_topic=True`. This **clears** the `persist_documents` to ensure a fresh search without context pollution.
+- **Follow-up**: If the user asks for more details (e.g., "Give me the file for #1"), the Router sets `is_new_topic=False`. The previous `documents` are maintained in `persist_documents` so the SQL Retriever can resolve references like "Item #1".

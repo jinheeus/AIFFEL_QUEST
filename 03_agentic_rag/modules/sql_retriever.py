@@ -97,13 +97,22 @@ Rules:
 2. For "latest" or "recent" queries, **ALWAYS use ORDER BY date DESC**. **NEVER add a WHERE clause for date (e.g. date > ...)** unless the user explicitly asks for a specific date range (e.g. "2024년 이후"). "Latest" means sorting, not filtering.
 3. **SQLite Compatibility**:
    - The function `year()` does NOT exist.
-   - To filter by year, **ALWAYS use `date LIKE '2023-%'`**.
-   - Do NOT use `strftime('%Y', date) = 2023` (Integer comparison fails).
-   - If you must use `strftime`, ensure you compare with a STRING: `strftime('%Y', date) = '2023'`.
+   - To filter by year, **ALWAYS use `date LIKE 'YYYY-%'`** (e.g. '2024-%').
+   - Do NOT use `strftime('%Y', date) = 2024` (Integer comparison fails).
+   - If you must use `strftime`, ensure you compare with a STRING: `strftime('%Y', date) = '2024'`.
 4. **Target Columns**: Search for organization/company names in the `company` column, NOT the `site` column.
 5. **Entity Resolution**: Convert short names or typos to the full official name if possible.
 6. Select all columns (*) unless specified otherwise.
 7. **Syntax Warning**: Ensure `WHERE` comes before `ORDER BY`, and `ORDER BY` comes before `LIMIT`.
+8. **No Semicolons in Subqueries**: Do NOT put a semicolon `;` inside a subquery or nested SELECT. Only put ONE semicolon at the very end of the main query.
+9. **Strict Filtering**: Do NOT add `WHERE` clauses for columns (like `category`, `problem`) unless the user explicitly asks for them.
+10. **Correct Column Usage**:
+    - **Companies/Organizations**: Use `company LIKE '%Name%'` (e.g. 'Incheon Airport' -> `company LIKE '%인천국제공항공사%'`).
+    - **Source Sites**: Use `site = '감사원'` ONLY if the user asks for "Board of Audit" or "BAI".
+11. **Simplicity First**: 
+    - For "latest 3 items", simply use `ORDER BY date DESC LIMIT 3`.
+    - **NEVER** add `date LIKE 'YYYY-%'` or any other year filter unless the user explicitly wrote a year (e.g. "2023년") in the query.
+    - **No Redundant Filters**: Do NOT add `WHERE date >= '2021-...'` or `date <= '2024-...'`. If looking for all time, just omit the date clause.
 
 User Query: {query}
 SQL Query:

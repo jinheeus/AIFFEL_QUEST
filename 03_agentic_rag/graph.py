@@ -92,12 +92,21 @@ def node_router(state: AgentState):
         
         Classify the query into one of three categories:
         1. 'chat': Casual conversation, greetings, self-introduction, or non-audit questions.
-        2. 'fast': Simple information retrieval, fact lookup, list requests (e.g., 'latest 2 cases'), OR specific follow-up questions about the previous answer (e.g., 'tell me more about #2', 'give me the file for #1'). Requires NO complex reasoning/planning.
+        2. 'fast': Simple information retrieval, fact lookup, list requests (e.g., 'latest 2 cases', 'Gas Corp 3 cases'), OR specific follow-up questions about the previous answer (e.g., 'tell me more about #2', 'give me the file for #1'). Requires NO complex reasoning/planning.
         3. 'deep': Complex analysis, comparison, cause-effect analysis, or drafting reports. Requires multi-step reasoning.
-        
+
+        [Pivot Detection]
+        Determine if the user is pivoting to a completely NEW topic (New Entity, New Company, New Search) or asking a FOLLOW-UP question about the previous context.
+        - "Gas Corp 3 cases" -> New Topic: TRUE
+        - "Tell me more about the first one" -> New Topic: FALSE
+        - "Summarize that" -> New Topic: FALSE
+        - "Incheon Airport again?" -> New Topic: TRUE (Explicitly mentioning entity usually implies search, but if it matches current context it might be follow-up. Treat explicit entity search as New Topic if it replaces the old one.)
+
         [Output Format]
-        Return ONLY the category name: "chat", "fast", or "deep".
-        Do not add any explanation or punctuation.
+        Return a single line with: Category | NewTopic(True/False)
+        Example 1: fast | True
+        Example 2: fast | False
+        Example 3: chat | True
         """
 
         prompt = ChatPromptTemplate.from_messages(
@@ -113,9 +122,42 @@ def node_router(state: AgentState):
 
         # Robust Parsing
         cleaned_text = result_text.strip().lower()
-        if "fast" in cleaned_text:
+
+        # 1. Try splitting by pipe |
+        if "|" in cleaned_text:
+            parts = cleaned_text.split("|")
+            category_part = parts[0].strip()
+            new_topic_part = parts[1].strip() if len(parts) > 1 else ""
+        else:
+            # 2. Try newline or just look for keywords
+            category_part = cleaned_text
+            new_topic_part = cleaned_text
+
+        # Determine Category
+        if "fast" in category_part:
             category = "fast"
-        elif "chat" in cleaned_text:
+        elif "chat" in category_part:
+            category = "chat"
+        else:
+            category = "deep"  # default
+
+        # Determine New Topic (Default to True for safety)
+        is_new_topic = True
+
+        # Check specifically for "false" / "no" in the New Topic part or if explicitly labeled
+        # Examples: "NewTopic: False", "False", "fast | false"
+        if "false" in new_topic_part or "no" in new_topic_part:
+            is_new_topic = False
+
+        # Edge Case: If LLM outputs "Category: fast\nNewTopic: False"
+        if "newtopic" in cleaned_text and "false" in cleaned_text:
+            # Double check: make sure "false" is associated with newtopic
+            # Simple heuristic: if "false" appears, it's likely NewTopic=False (since category is rarely 'false')
+            is_new_topic = False
+
+        if "fast" in category_part:
+            category = "fast"
+        elif "chat" in category_part:
             category = "chat"
         else:
             category = "deep"  # default to deep if unsure
@@ -127,7 +169,25 @@ def node_router(state: AgentState):
         else:
             mode = "deep"
 
-        print(f" -> [Router] LLM Decided: {mode.upper()} (Raw: {result_text})")
+        print(
+            f" -> [Router] LLM Decided: {mode.upper()} | New Topic: {is_new_topic} (Raw: {result_text})"
+        )
+
+        # [Context Logic]
+        # If New Topic -> Clear Persistence
+        # If Follow-up -> Keep Persistence (if available)
+        final_persist_docs = []
+        if not is_new_topic:
+            final_persist_docs = persist_docs
+            if final_persist_docs:
+                print(
+                    f" -> [Router] Persistence: KEEPING {len(final_persist_docs)} docs (Follow-up)"
+                )
+            else:
+                print(" -> [Router] Persistence: None available to keep.")
+        else:
+            final_persist_docs = []
+            print(" -> [Router] Persistence: CLEARED (New Topic)")
 
         # Explicitly return cleared state to ensure updates propagate in LangGraph
         return {
@@ -137,7 +197,7 @@ def node_router(state: AgentState):
             "search_query": "",
             "sub_queries": [],
             "documents": [],
-            "persist_documents": persist_docs,  # Pass forward the history
+            "persist_documents": final_persist_docs,  # Updated Logic
             "graph_context": [],
             "sop_context": "",
             "grade_status": "",
@@ -157,7 +217,7 @@ def node_router(state: AgentState):
             "search_query": "",
             "sub_queries": [],
             "documents": [],
-            "persist_documents": state.get("persist_documents", []),  # Keep Persistence
+            "persist_documents": [],  # Safe default: Clear on error
             "graph_context": [],
             "sop_context": "",
             "grade_status": "",

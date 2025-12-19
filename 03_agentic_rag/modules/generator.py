@@ -32,7 +32,8 @@ def generate_answer(state: AgentState) -> AgentState:
 [답변 작성 가이드]
 1. 질문에 대한 **핵심 결론**을 첫 문장에서 명확히 제시하십시오.
 2. [Context]에서 **관련 근거(규정명, 조항, 사례 등)**를 구체적으로 인용하십시오.
-3. 질문 해결에 필요한 정보가 **[Context], [Previous Context], [Chat History]** 중 어디에도 없을 경우에만 "관련 정보를 찾을 수 없습니다"라고 명시하십시오. 만약 [Previous Context]에 정보가 있다면 이를 적극적으로 활용하여 답변하고, **불필요한 "정보 없음" 멘트는 생략하십시오.**
+3. **리스트 요청 처리 (List Handling)**: 사용자가 "3개만 알려줘", "리스트 보여줘" 등 목록을 요청하면, [Context]에 있는 문서 정보를 **무조건** 요약하여 나열하십시오. 질문이 모호하더라도 "검색된 문서는 다음과 같습니다"라고 시작하며 내용을 보여주십시오. 내용이 중복되어도 있는 그대로 보여주십시오.
+4. 질문 해결에 필요한 정보가 **[Context], [Previous Context], [Chat History]** 중 어디에도 없을 경우에만 "관련 정보를 찾을 수 없습니다"라고 명시하십시오.
 4. **링크/파일 요청**: 사용자가 "링크", "파일", "원본", "다운로드" 등을 요청하면, 반드시 [Context]의 **[[문서 정보]]** 또는 **[[이전 문서]]** 섹션에 있는 **'파일경로'** 또는 **'다운로드'** URL을 그대로 제공하십시오. 링크가 있다면 절대 "없다"고 하지 마십시오.
 5. 불필요한 사족이나 인사는 생략하고, 정보 전달에 집중하십시오.
 """
@@ -45,7 +46,8 @@ def generate_answer(state: AgentState) -> AgentState:
 
     # Context format (Handle both string and Document objects)
     docs_text = []
-    for d in state["documents"]:
+    documents = state.get("documents", [])
+    for d in documents:
         if hasattr(d, "page_content"):
             # Include Metadata for Generator
             meta = d.metadata
@@ -78,6 +80,10 @@ def generate_answer(state: AgentState) -> AgentState:
             docs_text.append(str(d))
 
     context_text = "\n\n---\n\n".join(docs_text)
+
+    # [Safety] If context is empty, provide explicit placeholder to prevent API 400 errors or hallucinations
+    if not context_text.strip():
+        context_text = "검색된 관련 문서가 없습니다. (No documents found)"
 
     # Graph Context 병합
     if state.get("graph_context"):

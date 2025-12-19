@@ -61,3 +61,9 @@ async def aput(...):
 **운영자 참고용**:
 - 활성 세션 조회: `redis-cli keys "checkpoint_latest:*"`
 - 세션 내용 검사: `redis-cli get "checkpoint:{session_id}:{checkpoint_id}"` (바이너리 피클 데이터이므로 확인하려면 파이썬 디코딩 필요).
+
+## 5. 컨텍스트 관리 (Context Management)
+**Router**는 단순한 KV 저장소를 넘어, **대화의 문맥(Pivot)**을 능동적으로 관리합니다.
+- **Pivot Detection**: 사용자가 새로운 주제(New Topic)로 넘어갔는지, 이전 주제에 대한 후속 질문(Follow-up)인지 판별합니다.
+- **Memory Clearing**: 새로운 주제로 판별될 경우, 이전 턴의 검색 결과(`persist_documents`)를 강제로 초기화하여, 과거 데이터가 새로운 검색(SQL 생성 등)을 방해하지 않도록 합니다.
+- **Persistence**: 후속 질문일 경우, 이전 검색 결과를 그대로 유지하여 "첫번째꺼"와 같은 지시 대명사를 해결할 수 있게 합니다.

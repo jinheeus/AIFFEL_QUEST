@@ -28,7 +28,9 @@ class SQLRetriever:
         self.db_path = db_path
 
         # Check API Key
-        if not os.getenv("CLOVASTUDIO_API_KEY") and not os.getenv("NCP_CLOVASTUDIO_API_KEY"):
+        if not os.getenv("CLOVASTUDIO_API_KEY") and not os.getenv(
+            "NCP_CLOVASTUDIO_API_KEY"
+        ):
             print("❌ Error: CLOVASTUDIO_API_KEY not found in environment.")
             print(f"Current Keys: {[k for k in os.environ.keys() if 'CLOVA' in k]}")
 
@@ -77,19 +79,19 @@ Rules:
    - To filter by year, **ALWAYS use `date LIKE 'YYYY-%'`** (e.g. '2024-%').
    - Do NOT use `strftime('%Y', date) = 2024` (Integer comparison fails).
    - If you must use `strftime`, ensure you compare with a STRING: `strftime('%Y', date) = '2024'`.
-4. **Target Columns**: Search for organization/company names in the `company` column, NOT the `site` column.
-5. **Entity Resolution**: Convert short names or typos to the full official name if possible.
-6. Select all columns (*) unless specified otherwise.
-7. **Syntax Warning**: Ensure `WHERE` comes before `ORDER BY`, and `ORDER BY` comes before `LIMIT`.
-8. **No Semicolons in Subqueries**: Do NOT put a semicolon `;` inside a subquery or nested SELECT. Only put ONE semicolon at the very end of the main query.
-9. **Strict Filtering**: Do NOT add `WHERE` clauses for columns (like `category`, `problem`) unless the user explicitly asks for them.
-10. **Correct Column Usage**:
-    - **Companies/Organizations**: Use `company LIKE '%Name%'` (e.g. 'Incheon Airport' -> `company LIKE '%인천국제공항공사%'`).
+4. **Target Columns (CRITICAL)**:
+   - **Organization/Company Names**: Search in `company` column (e.g., "Incheon Airport" -> `company LIKE '%인천국제공항공사%'`).
+   - **Topics/Subjects (e.g., Contract, Safety, Budget)**: Search in `title`, `problem`, `cat`, or `sub_cat`. **NEVER** search for topics in `company`.
+     - Example: "contract cases" -> `(title LIKE '%계약%' OR problem LIKE '%계약%' OR cat LIKE '%계약%' OR sub_cat LIKE '%계약%')`
+5. Select all columns (*) unless specified otherwise.
+6. **Syntax Warning**: Ensure `WHERE` comes before `ORDER BY`, and `ORDER BY` comes before `LIMIT`.
+7. **No Semicolons in Subqueries**: Do NOT put a semicolon `;` inside a subquery or nested SELECT. Only put ONE semicolon at the very end of the main query.
+8. **Correct Column Usage**:
+    - **Companies/Organizations**: Use `company LIKE '%Name%'`.
     - **Source Sites**: Use `site = '감사원'` ONLY if the user asks for "Board of Audit" or "BAI".
-11. **Simplicity First**: 
+9. **Simplicity First**: 
     - For "latest 3 items", simply use `ORDER BY date DESC LIMIT 3`.
-    - **NEVER** add `date LIKE 'YYYY-%'` or any other year filter unless the user explicitly wrote a year (e.g. "2023년") in the query.
-    - **No Redundant Filters**: Do NOT add `WHERE date >= '2021-...'` or `date <= '2024-...'`. If looking for all time, just omit the date clause.
+    - **NEVER** add `date LIKE 'YYYY-%'` unless explicitly asked.
 
 User Query: {query}
 SQL Query:

@@ -30,6 +30,19 @@ body {
     /* gray-900 */
 }
 
+/* Links */
+.markdown-prose a {
+    color: #2563eb;
+    /* blue-600 */
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.markdown-prose a:hover {
+    color: #1d4ed8;
+    /* blue-700 */
+}
+
 /* Headings */
 .markdown-prose h1,
 .markdown-prose h2,

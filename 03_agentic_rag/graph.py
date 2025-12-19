@@ -6,8 +6,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
-# --- Import Modular RAG Components ---
-# --- Import Modular RAG Components ---
+# --- 모듈형 RAG 컴포넌트 임포트 ---
 from modules.generator import generate_answer
 from modules.retriever import retrieve_documents  # Wraps HybridRetriever
 from modules.grader import grade_documents, grade_hallucination, grade_answer
@@ -20,8 +19,9 @@ from modules.sql_retriever import SQLRetriever
 # Fallback / Simple Chat
 from modules.chat_worker import chat_worker
 
+# --- 체크포인터 (Checkpointer) ---
+from langgraph.checkpoint.memory import MemorySaver
 
-# --- Router Logic ---
 # --- Router Logic ---
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -31,24 +31,24 @@ from model_factory import ModelFactory
 
 class RouterOutput(BaseModel):
     category: str = Field(
-        description="Category: 'chat' (casual/greeting), 'fast' (simple retrieval/lookup), 'deep' (complex reasoning/analysis)."
+        description="Category: 'chat' (일상 대화), 'fast' (단순 검색/조회), 'deep' (복잡한 추론/분석)."
     )
 
 
 def node_router(state: AgentState):
     """
-    [Node] LLM-based Router.
-    Classifies user intent into 'chat', 'fast' (Fast Track), or 'deep' (Deep RAG).
-    Updates state["mode"].
+    [Node] LLM 기반 라우터 (Router)
+    사용자의 의도를 'chat', 'fast' (Fast Track), 'deep' (Deep RAG) 중 하나로 분류합니다.
+    또한, 새로운 주제(Context)인지 판단하여 이전 맥락을 유지하거나 초기화합니다.
     """
     print("--- [Router] Routing ---")
     query = state.get("query", "")
 
-    # [Context Persistence]
-    # Save documents from the previous turn BEFORE clearing state
+    # [컨텍스트 유지 로직]
+    # 상태를 초기화하기 전에 이전 턴의 문서들을 저장
     prev_docs = state.get("documents", [])
 
-    # DEBUG: Check what we received from previous turn
+    # 디버그: 이전 턴에서 받은 문서 개수 확인
     print(f" -> [Router Debug] Prev Docs Count: {len(prev_docs)}")
 
     persist_docs = state.get("persist_documents", [])
@@ -60,9 +60,9 @@ def node_router(state: AgentState):
             f" -> [Router Debug] Keeping existing {len(persist_docs)} persisted docs."
         )
 
-    # 0. Clean Slate: Clear ephemeral state from previous turns in the same thread
-    # This prevents stale 'search_query' or 'documents' from interfering with the new request.
-    state["search_query"] = ""  # Reset search query
+    # 0. 상태 초기화 (Clean Slate): 같은 스레드 내의 이전 턴 임시 데이터를 삭제
+    # 이전 'search_query'나 'documents'가 새로운 요청에 간섭하는 것을 방지함
+    state["search_query"] = ""  # 검색 쿼리 초기화
     state["sub_queries"] = []
     state["documents"] = []
     state["graph_context"] = []
@@ -71,8 +71,8 @@ def node_router(state: AgentState):
     state["retrieval_count"] = 0
     state["reflection_count"] = 0
     state["is_hallucinated"] = "no"
-    state["is_useful"] = "yes"  # Default
-    state["feedback"] = ""  # Clear previous feedback loop
+    state["is_useful"] = "yes"  # 기본값
+    state["feedback"] = ""  # 피드백 루프 초기화
 
     # 1. Quick Keyword Check (Optimization)
     greetings = ["안녕", "반가워", "누구니", "hello", "hi", "하이", "ㅎㅇ"]
@@ -229,12 +229,12 @@ def node_router(state: AgentState):
         }
 
 
-# --- Conditional Edges Logic ---
+# --- 조건부 엣지 (Conditional Edges) 로직 ---
 
 
 def route_start(state: AgentState):
     """
-    Routes to Chat or RAG (Fast/Deep) based on 'mode'.
+    모드(Mode)에 따라 Chat, Fast(SQL), Deep(Field Selector) 트랙으로 분기합니다.
     """
     mode = state.get("mode", "deep")
     if mode == "chat":
@@ -248,8 +248,8 @@ def route_start(state: AgentState):
 
 def route_post_retrieval(state: AgentState):
     """
-    Fast Track: Skip grading/SOP.
-    Deep Track: Proceed to grading.
+    Fast Track: 채점(Grading) 및 SOP 검색을 건너뛰고 바로 답변 생성으로 이동.
+    Deep Track: 문서 채점(Grading) 단계로 이동.
     """
     mode = state.get("mode", "deep")
     if mode == "fast":
@@ -261,8 +261,8 @@ def route_post_retrieval(state: AgentState):
 
 def route_post_generation(state: AgentState):
     """
-    Fast Track: Skip Verification.
-    Deep Track: Proceed to Verification.
+    Fast Track: 검증(Verification) 단계를 건너뛰고 바로 요약(Summary)으로 이동.
+    Deep Track: 답변 검증(Verification) 단계로 이동.
     """
     mode = state.get("mode", "deep")
     if mode == "fast":
@@ -274,7 +274,7 @@ def route_post_generation(state: AgentState):
 
 def route_retrieval(state: AgentState):
     """
-    CRAG Logic: If retrieval failed (irrelevant docs), rewrite query.
+    CRAG 로직: 검색된 문서가 부적절한 경우 쿼리를 재작성(Reformulate)합니다.
     """
     is_success = state.get("grade_status", "no")
     retry_count = state.get("retrieval_count", 0)
@@ -290,10 +290,10 @@ def route_retrieval(state: AgentState):
 
 def route_verification(state: AgentState):
     """
-    Self-RAG Logic: Check hallucination and answer quality.
+    Self-RAG 로직: 환각(Hallucination) 여부와 답변의 유용성(Utility)을 검증합니다.
     """
 
-    # [Fix] Loop Prevention (Check FIRST)
+    # 무한 루프 방지
     reflection_count = state.get("reflection_count", 0)
     if reflection_count >= 3:
         print(" -> [Stop] Max reflection/regeneration reached. Ending.")
@@ -317,17 +317,18 @@ def route_verification(state: AgentState):
         return "rewrite_query"
 
 
-# --- Node Wrappers (Adopting new modules to State) ---
+# --- 노드 래퍼 (Wrapper) ---
+# 기존 modules의 함수들을 LangGraph State에 맞게 연결해주는 어댑터 역할을 합니다.
 
 
 def node_retrieve(state: AgentState):
-    # Wrapper to call existing retrieve_documents logic
-    # Ensure it uses 'search_query' if available
+    # 기존 retrieve_documents 로직을 호출하는 래퍼(Wrapper)입니다.
+    # 'search_query'가 존재하면 이를 우선적으로 사용합니다.
     return retrieve_documents(state)
 
 
 def node_grade_documents(state: AgentState):
-    # Call grader
+    # Grader를 호출하여 문서를 평가합니다.
     q = state.get("search_query") or state["query"]
     docs = state.get("documents", [])
     result = grade_documents(
@@ -341,7 +342,7 @@ def node_grade_documents(state: AgentState):
 
 
 def node_rewrite(state: AgentState):
-    # Call rewriter
+    # Rewriter를 호출하여 쿼리를 재작성합니다.
     q = state.get("search_query") or state["query"]
     new_q = rewrite_query(q)
     return {
@@ -351,31 +352,29 @@ def node_rewrite(state: AgentState):
 
 
 def node_generate(state: AgentState):
-    # wrapper for generate_answer
+    # generate_answer 함수를 호출하는 래퍼입니다.
     return generate_answer(state)
 
 
 def node_consistency_check(state: AgentState):
-    # Hallucination Check
+    # 환각(Hallucination) 검사
     ans = state.get("answer", "")
     docs = state.get("documents", [])
 
-    # Check groundedness
+    # Groundedness(근거 기반 여부) 확인
     if not docs or docs == ["검색 결과가 없습니다."]:
         return {"is_hallucinated": "no", "is_useful": "no"}
 
-    is_grounded = grade_hallucination(
-        ans, docs
-    )  # 'yes' (grounded) or 'no' (hallucination)
+    is_grounded = grade_hallucination(ans, docs)  # 'yes' (근거 있음) 또는 'no' (환각)
 
-    # Invert logic for state: is_hallucinated 'yes' if NOT grounded
+    # 상태 로직 반전: 근거가 없으면(NOT grounded) 환각(is_hallucinated='yes')으로 간주
     is_hallucinated = "no" if is_grounded == "yes" else "yes"
 
-    # Check utility
+    # 답변의 유용성(Utility) 확인
     q = state.get("search_query") or state["query"]
     is_useful = grade_answer(q, ans)  # 'yes' or 'no'
 
-    # Increment reflection count to track cycles
+    # 루프 방지를 위해 reflection_count 증가
     cur_count = state.get("reflection_count", 0)
 
     return {
@@ -393,7 +392,8 @@ def node_consistency_check(state: AgentState):
 
 def node_retrieve_sql(state: AgentState):
     """
-    [Node] SQL-based Retrieval for Metadata Queries (Fast Track).
+    [Node] SQL 기반 메타데이터 검색 (Fast Track)
+    사용자의 질문을 SQL로 변환하여 DB에서 직접 검색합니다.
     """
     print("--- [Node] SQL Retrieve ---")
     query = state["query"]
@@ -412,7 +412,7 @@ def node_retrieve_sql(state: AgentState):
     return {"documents": documents, "retrieval_count": 1}
 
 
-# --- Graph Construction ---
+# --- 그래프 구성 (Graph Construction) ---
 
 workflow = StateGraph(AgentState)
 
@@ -446,7 +446,7 @@ workflow.add_conditional_edges(
 
 workflow.add_edge("chat_worker", END)
 
-# SQL Retrieval Chain (Connect to Post-Retrieval Routing)
+# SQL 검색 체인 (검색 후 라우팅 연결)
 workflow.add_conditional_edges(
     "retrieve_sql",
     route_post_retrieval,
@@ -456,14 +456,14 @@ workflow.add_conditional_edges(
 # RAG Start
 workflow.add_edge("field_selector", "hybrid_retriever")
 
-# Retrieval Chain (Adaptive)
+# 검색 체인 (Adaptive)
 workflow.add_conditional_edges(
     "hybrid_retriever",
     route_post_retrieval,
     {"generate": "generate", "grade_documents": "grade_documents"},
 )
 
-# CRAG Loop (Grade -> SOP or Rewrite)
+# CRAG 루프 (Grade -> SOP or Rewrite)
 workflow.add_conditional_edges(
     "grade_documents",
     route_retrieval,
@@ -475,7 +475,7 @@ workflow.add_edge("rewrite_query", "hybrid_retriever")
 # SOP -> Generate
 workflow.add_edge("sop_retriever", "generate")
 
-# Generation & Verification (Adaptive)
+# 답변 생성 및 검증 분기 (Adaptive)
 workflow.add_conditional_edges(
     "generate",
     route_post_generation,
@@ -485,22 +485,19 @@ workflow.add_conditional_edges(
     },
 )
 
-# Verification Loop
+# 검증 루프 (Verification Loop)
 workflow.add_conditional_edges(
     "verify_answer",
     route_verification,
     {
-        "generate": "generate",  # Retry generation (Hallucination)
-        "rewrite_query": "rewrite_query",  # Retry retrieval (Not Useful)
-        END: "summarize_conversation",  # Success -> Summarize before END
+        "generate": "generate",  # 답변 재생성 (환각 발생 시)
+        "rewrite_query": "rewrite_query",  # 검색 재시도 (답변 유용성 부족 시)
+        END: "summarize_conversation",  # 성공 -> 대화 요약 후 종료
     },
 )
 
-# Summarizer -> END
+# 요약 -> 종료 (Summarizer -> END)
 workflow.add_edge("summarize_conversation", END)
-
-# --- Checkpointer ---
-from langgraph.checkpoint.memory import MemorySaver
 
 if Config.ENABLE_REDIS:
     try:

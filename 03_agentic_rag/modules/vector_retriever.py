@@ -19,27 +19,27 @@ from config import Config
 
 class VectorRetriever:
     """
-    Dedicated Hybrid Retriever for Agentic RAG.
-    Implements:
-    1. Dense Vector Search (Milvus)
-    2. Sparse Keyword Search (BM25)
-    3. Hybrid Fusion (RRF)
-    4. Reranking (BGE-Reranker)
+    Agentic RAG를 위한 전용 하이브리드 검색기 (Hybrid Retriever)입니다.
+    구현 내용:
+    1. 밀집 벡터 검색 (Dense Vector Search - Milvus)
+    2. 희소 키워드 검색 (Sparse Keyword Search - BM25)
+    3. 하이브리드 퓨전 (RRF Fusion)
+    4. 리랭킹 (Reranking - BGE-Reranker)
     """
 
     def __init__(self):
-        print(f"[VectorRetriever] Initializing Hybrid Engine...")
+        print("[VectorRetriever] Initializing Hybrid Engine...")
 
-        # 1. Initialize Embeddings
+        # 1. 임베딩 모델 초기화 (Initialize Embeddings)
         self.embedding_model = ClovaXEmbeddings(model=Config.EMBEDDING_MODEL)
         self.collection_name = "audit_rag_hybrid_v1"
 
-        # 2. Milvus Clients
-        # Pymilvus for BM25 loading
+        # 2. Milvus 클라이언트 설정
+        # BM25 로딩을 위한 Pymilvus
         self.milvus_client = MilvusClient(
             uri=Config.MILVUS_URI, token=Config.MILVUS_TOKEN
         )
-        # LangChain Store for Dense Search
+        # Dense Search를 위한 LangChain Store
         self.vector_store = Milvus(
             embedding_function=self.embedding_model,
             connection_args={
@@ -50,7 +50,7 @@ class VectorRetriever:
             auto_id=True,
         )
 
-        # 3. Reranker (Cross-Encoder)
+        # 3. 리랭커 초기화 (Reranker)
         try:
             self.reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
             print("   [Retriever] Reranker Loaded: BAAI/bge-reranker-v2-m3")
@@ -60,13 +60,13 @@ class VectorRetriever:
             )
             self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-        # 4. Build BM25 Index
-        # This is expensive on startup, but necessary for Hybrid.
+        # 4. BM25 인덱스 구축 (Build BM25 Index)
+        # 초기 구동 시 비용이 들지만 Hybrid 검색을 위해 필수적입니다.
         self._build_bm25_index()
 
     def _load_documents_from_milvus(self) -> List[Dict[str, Any]]:
         """
-        Fetches all documents for BM25 indexing.
+        BM25 인덱싱을 위해 Milvus에서 모든 문서를 가져옵니다.
         """
         print(f"   [Retriever] Loading corpus from Milvus: {self.collection_name}...")
         all_docs = []
@@ -198,21 +198,22 @@ class VectorRetriever:
         use_reranker: bool = True,
     ) -> List[Document]:
         """
-        Hybrid Strategy: Dense + Sparse + RRF + Rerank -> Parent Contexts
+        하이브리드 검색 전략 (Hybrid Strategy):
+        Dense + Sparse + RRF + Rerank -> 부모 컨텍스트(Parent Contexts) 반환
         """
-        # Override top_k if specified in filters
+        # 필터에 'k'가 있으면 top_k 재정의 (Override top_k)
         if "k" in filters:
             top_k = int(filters["k"])
             print(f"   [Hybrid] Override Top-K: {top_k}")
 
         print(f"   [Hybrid] Searching for: '{query}'")
 
-        # --- 1. Dense Retrieval ---
-        # Note: 'expr' for filters not fully implemented here for simplicity
-        # If strict filtering is needed, add expr construction
+        # --- 1. Dense Retrieval (밀집 검색) ---
+        # 참고: 단순화를 위해 'expr' 필터는 완벽히 구현되지 않았습니다.
+        # 엄격한 필터링이 필요하면 expr 구성을 추가해야 합니다.
         dense_results = self.vector_store.similarity_search(query, k=50)
 
-        # --- 2. Sparse Retrieval ---
+        # --- 2. Sparse Retrieval (희소 검색) ---
         tokenized_query = [t.form for t in self.tokenizer.tokenize(query)]
         sparse_docs = self.bm25.get_top_n(tokenized_query, self.bm25_docs, n=50)
 
@@ -239,7 +240,7 @@ class VectorRetriever:
         fused_scores.sort(key=lambda x: x[1], reverse=True)
         top_candidates = fused_scores[:50]
 
-        # --- 4. Parent Logic ---
+        # --- 4. 부모 문서 로직 (Parent Logic) ---
         seen_parents = set()
         candidates = []
 
@@ -247,7 +248,7 @@ class VectorRetriever:
             doc_obj = self.id_to_doc.get(content)
             # If missing from lookup (rare), check dense results
             if not doc_obj:
-                # Minimal fallback
+                # 최소한의 폴백 (Minimal fallback)
                 doc_obj = Document(
                     page_content=content,
                     metadata={"parent_text": content, "doc_id": "unknown"},
@@ -255,7 +256,7 @@ class VectorRetriever:
 
             parent_text = doc_obj.metadata.get("parent_text") or content
 
-            # Create Parent Document with Metadata
+            # 메타데이터를 포함하여 부모 문서 생성 (Create Parent Document)
             parent_doc = Document(page_content=parent_text, metadata=doc_obj.metadata)
 
             h = hash(parent_text)
@@ -263,20 +264,20 @@ class VectorRetriever:
                 seen_parents.add(h)
                 candidates.append(parent_doc)
 
-        # --- 5. Reranking ---
+        # --- 5. 리랭킹 (Reranking) ---
         final_docs = candidates
         if use_reranker and candidates:
             # [Filters]
-            # If sorting by date (Latest), we should be lenient with semantic score.
-            # "Latest cases" might have low semantic match to specific content but high user intent for recency.
+            # 날짜순 정렬(Latest)인 경우, 의미론적 점수(Semantic Score) 기준을 완화합니다.
+            # "최신 사례"는 내용 연관성이 낮더라도 사용자의 시의성(Recency) 의도가 중요하기 때문입니다.
             min_score = 0.35
             if filters and filters.get("sort") == "date_desc":
                 print(
-                    f"   [Hybrid] Sort='date_desc' detected. Lowering threshold to 0.1 to capture recent docs."
+                    "   [Hybrid] Sort='date_desc' detected. Lowering threshold to 0.1 to capture recent docs."
                 )
                 min_score = 0.1
 
-            # Rank top 30 candidates
+            # 상위 30개 후보 리랭킹 (Rank top 30)
             pool = candidates[:30]
             # Extract content for reranker
             pool_texts = [d.page_content for d in pool]
@@ -286,9 +287,8 @@ class VectorRetriever:
             scored = sorted(zip(pool, scores), key=lambda x: x[1], reverse=True)
 
             # [Threshold Filtering]
-            # Filter out low relevance docs (Noise) which confuse the LLM
-            # Score range for BGE-M3 Reranker is typically sigmoid (0-1) but can vary.
-            # 0.35 is a safe conservative threshold for "Relevant".
+            # 관련성 낮은 문서(Noise)를 필터링하여 LLM 혼란을 방지합니다.
+            # BGE-M3 점수가 0-1 사이일 때, 0.35는 "관련 있음"을 판단하는 보수적인 기준입니다.
             scored = [s for s in scored if s[1] >= 0.35]
 
             final_docs = [doc for doc, score in scored]
@@ -302,15 +302,15 @@ class VectorRetriever:
                     )
                     print(f"   -> [Doc {i + 1}] Score: {s:.4f} | Title: {title}")
             else:
-                print(f"   [Reranker] All candidates filtered by threshold (0.35)")
+                print("   [Reranker] All candidates filtered by threshold (0.35)")
         else:
             final_docs = candidates
 
-        # --- 6. Post-Retrieval Sorting (e.g. Date) ---
+        # --- 6. 검색 후 정렬 (Post-Retrieval Sorting) ---
         if "sort" in filters:
             final_docs = self._apply_sorting(final_docs, filters["sort"])
 
-        # Final Truncation after Sort
+        # 정렬 후 최종 자르기 (Final Truncation)
         final_docs = final_docs[:top_k]
 
         print(f"   [Hybrid] Retrieved {len(final_docs)} final contexts.")
@@ -318,8 +318,8 @@ class VectorRetriever:
 
     def _apply_sorting(self, docs: List[Document], sort_mode: str) -> List[Document]:
         """
-        Applies metadata-based sorting.
-        Current support: 'date_desc' (Latest first)
+        메타데이터 기반 정렬을 적용합니다.
+        지원: 'date_desc' (최신순)
         """
         if sort_mode == "date_desc":
             print("   [Hybrid] Sorting by Date (Latest)...")
@@ -327,8 +327,8 @@ class VectorRetriever:
                 from datetime import datetime
 
                 def parse_date(doc):
-                    # Assume metadata['date'] format: YYYY.MM.DD
-                    # Fallback to older date if missing/invalid
+                    # 메타데이터 날짜 형식 가정: YYYY.MM.DD
+                    # 없거나 잘못된 형식이면 과거 날짜로 처리 (Fallback)
                     d_str = doc.metadata.get("date", "1900.01.01")
                     try:
                         # Clean up potential whitespace
@@ -337,7 +337,7 @@ class VectorRetriever:
                     except Exception:
                         return datetime(1900, 1, 1)
 
-                # Sort: Latest date first
+                # 정렬: 최신 날짜 우선 (Latest date first)
                 docs.sort(key=parse_date, reverse=True)
             except Exception as e:
                 print(f"   [Hybrid] ⚠️ Date sort failed: {e}")

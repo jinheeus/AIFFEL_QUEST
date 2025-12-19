@@ -5,15 +5,16 @@ from .vector_retriever import get_retriever
 def retrieve_documents(state: AgentState) -> AgentState:
     """
     [Node] 'search' 카테고리일 때 실행. Vector DB에서 관련 문서를 검색합니다.
+    (Hybrid Retrieval Engine 사용)
     """
-    print(f"\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)")
+    print("\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)")
 
     # Lazy Load Retriever
     rag_pipeline = get_retriever()
 
     try:
         # 1. 문서 검색을 위한 쿼리 결정 (우선순위: search_query -> sub_queries -> query)
-        queries = []
+        # 'search_query'가 있으면 최우선으로 사용합니다.
         if state.get("search_query"):
             queries = [state["search_query"]]
         elif state.get("sub_queries"):
@@ -23,7 +24,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
 
         all_docs = []
 
-        # 2. 쿼리별 반복 검색 수행
+        # 2. 쿼리별 반복 검색 수행 (Iterative Search)
         for q in queries:
             # 선택된 필드(Selected Fields)를 쿼리에 주입하여 문맥 보강 (Context Injection)
             selected_fields = state.get("selected_fields", [])
@@ -41,13 +42,14 @@ def retrieve_documents(state: AgentState) -> AgentState:
             # (New) 메타데이터 필터 적용 (Hybrid Retrieval)
             filters = state.get("metadata_filters", {})
             if filters:
-                print(f" -> Applying Filters: {filters}")
+                print(f" -> 필터 적용 (Applying Filters): {filters}")
 
             docs = rag_pipeline.search_and_merge(search_q, top_k=k, filters=filters)
             if docs:
                 all_docs.extend(docs)
 
-        # 3. 중복 제거 (Content-based deduplication for Document objects)
+        # 3. 중복 제거 (Content-based deduplication)
+        # 문서 객체의 내용을 기준으로 중복을 제거합니다.
         unique_docs = []
         seen_content = set()
 
@@ -57,9 +59,9 @@ def retrieve_documents(state: AgentState) -> AgentState:
                 seen_content.add(d.page_content)
 
         if not unique_docs:
-            # [Fallback] If search failed but we have persistent docs, use them.
-            # This handles cases like "Tell me more about #2" where search might not match new docs
-            # but the user clearly wants to talk about previous docs.
+            # [Fallback] 검색 결과가 없지만 이전 턴의 문서(Persistent Docs)가 있는 경우 사용합니다.
+            # 예: "2번 문서에 대해 더 알려줘"라고 했을 때 검색어 매칭이 실패하더라도,
+            # 사용자는 명확히 이전 문서를 지칭하고 있기 때문입니다.
             persist_docs = state.get("persist_documents", [])
             if persist_docs:
                 print(
@@ -74,7 +76,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
         print(f" -> 검색 완료: 총 {len(unique_docs)}개 문서 병합됨")
 
     except Exception as e:
-        print(f" -> 검색 실패: {e}")
+        print(f" -> 검색 실패 (Search Failed): {e}")
         state["documents"] = [f"검색 중 오류 발생: {str(e)}"]
 
     return state

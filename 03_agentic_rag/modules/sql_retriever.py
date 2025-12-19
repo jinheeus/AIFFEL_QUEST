@@ -1,5 +1,5 @@
 import sqlite3
-import re
+import re  # noqa: F401 (Imported but unused, keeping just in case for future regex needs, or remove if strictly cleaning)
 import sys
 import os
 from typing import List, Dict, Any, Optional
@@ -19,26 +19,8 @@ load_dotenv(os.path.join(project_root, ".env"))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-try:
-    from langchain_naver import ChatClovaX
-except ImportError:
-    print("Warning: langchain_naver not found. Please install it.")
-    ChatClovaX = None
-
-try:
-    from config import Config
-
-    MODEL_NAME = Config.LLM_MODEL
-
-    # Validation
-    if not os.getenv("CLOVASTUDIO_API_KEY"):
-        # Try to fallback to Config key if available
-        if hasattr(Config, "CLOVANSTUDIO_API_KEY") and Config.CLOVANSTUDIO_API_KEY:
-            os.environ["CLOVASTUDIO_API_KEY"] = Config.CLOVANSTUDIO_API_KEY
-            print("   [SQL Retriever] Set CLOVASTUDIO_API_KEY from Config.")
-
-except ImportError:
-    MODEL_NAME = "HCX-DASH-001"  # Fallback
+from langchain_naver import ChatClovaX
+from config import Config
 
 
 class SQLRetriever:
@@ -46,20 +28,15 @@ class SQLRetriever:
         self.db_path = db_path
 
         # Check API Key
-        if not os.getenv("CLOVASTUDIO_API_KEY") and not os.getenv(
-            "NCP_CLOVASTUDIO_API_KEY"
-        ):
+        if not os.getenv("CLOVASTUDIO_API_KEY") and not os.getenv("NCP_CLOVASTUDIO_API_KEY"):
             print("❌ Error: CLOVASTUDIO_API_KEY not found in environment.")
             print(f"Current Keys: {[k for k in os.environ.keys() if 'CLOVA' in k]}")
 
-        if ChatClovaX:
-            # Using ChatClovaX as per project standard
-            # temperature=0 is sometimes invalid, use small float
-            self.llm = ChatClovaX(model=MODEL_NAME, temperature=0.05, max_tokens=2048)
-        else:
-            raise ImportError("ChatClovaX is required for SQLRetriever.")
+        # ChatClovaX 초기화
+        # temperature=0이 가끔 튀는 경우가 있어 작은 float 값을 사용합니다.
+        self.llm = ChatClovaX(model=Config.LLM_MODEL, temperature=0.05, max_tokens=2048)
 
-        # Schema for the LLM to understand
+        # LLM이 이해하기 위한 스키마 정보 (Schema for LLM)
         self.schema_info = """
 Table: audits
 Columns:
@@ -142,14 +119,14 @@ SQL Query:
         self, query: str, context: Optional[List[Document]] = None
     ) -> List[Document]:
         """
-        Translates NL query to SQL and executes it, returning Documents.
+        자연어 질문(NL)을 SQL로 변환하여 실행하고, 결과를 Document 리스트로 반환합니다.
         Args:
-            query: User's natural language query.
-            context: List of previous Documents (for resolving 'it', '#2', etc.)
+            query: 사용자의 자연어 질문
+            context: 이전 문서 리스트 ('그거', '#2' 등의 참조 해결용)
         """
-        print(f"   [SQL Retriever] Processing: {query}")
+        print(f"   [SQL Retriever] 처리 중: {query}")
 
-        # Format Context
+        # 컨텍스트 포맷팅 (Format Context)
         context_str = "No context available."
         if context:
             formatted = []
@@ -158,20 +135,20 @@ SQL Query:
                 title = doc.metadata.get("title", "Unknown")
                 formatted.append(f"Item #{i}: IDX={idx}, Title={title}")
             context_str = "\n".join(formatted)
-            print(f"   [SQL Retriever] Context Provided ({len(context)} docs)")
+            print(f"   [SQL Retriever] 컨텍스트 제공됨 ({len(context)} docs)")
 
-        # 1. Generate SQL
+        # 1. SQL 생성 (Generate SQL)
         generated_sql = self.chain.invoke(
             {"schema": self.schema_info, "query": query, "context": context_str}
         )
         cleaned_sql = self._clean_sql(generated_sql)
-        print(f"   [SQL Retriever] Generated SQL: {cleaned_sql}")
+        print(f"   [SQL Retriever] 생성된 SQL: {cleaned_sql}")
 
-        # 2. Execute SQL
+        # 2. SQL 실행 (Execute SQL)
         results = self._execute_query(cleaned_sql)
-        print(f"   [SQL Retriever] Found {len(results)} records.")
+        print(f"   [SQL Retriever] 검색 결과: {len(results)}건 발견.")
 
-        # 3. Convert to Documents
+        # 3. 문서 변환 (Convert to Documents)
         documents = []
         for row in results:
             content = f"Title: {row.get('title')}\nDate: {row.get('date')}\nCompany: {row.get('company')}\nProblem: {row.get('problem')}\nAction: {row.get('action')}"

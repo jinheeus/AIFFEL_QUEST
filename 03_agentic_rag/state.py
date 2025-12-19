@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Annotated, Dict, Any
+from typing import TypedDict, List, Dict, Any
 
 
 class AgentState(TypedDict):
@@ -45,10 +45,7 @@ class AgentState(TypedDict):
     sop_context: str  # (New) 생성기에 제공할 SOP/규정 컨텍스트
     compliance_result: str  # 규정 위반 여부 판정 결과
 
-    # 적대적 감사 필드 (Phase 3.2: 모의 재판)
-    defense_argument: str  # 변호측 논리
-    prosecution_argument: str  # 검사측 논리
-    final_judgment: str  # 판사의 최종 판결문
+    # 결과 필드
     answer: str  # 최종 생성된 답변
     reflection_count: int  # 답변 재생성 횟수 (무한 루프 방지)
     feedback: str  # Reflector가 제공하는 피드백 (Generator가 참고)

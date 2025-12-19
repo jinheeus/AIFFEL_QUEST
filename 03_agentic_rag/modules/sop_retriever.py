@@ -88,17 +88,17 @@ Common dispositions: 시정(Correction), 주의(Caution), 경고(Warning), 징�
 
 def sop_retriever(state: AgentState) -> dict:
     """
-    SOP Execution Node (4-Step Chain):
-    1. Fact Extraction
-    2. Regulation Matching (internal knowledge)
-    3. Compliance Check
-    4. Disposition Decision
+    SOP 실행 노드 (4단계 체인):
+    1. 사실 추출 (Fact Extraction)
+    2. 규정 매칭 (Regulation Matching - 내부 지식)
+    3. 규정 준수 확인 (Compliance Check)
+    4. 처분 결정 (Disposition Decision)
     """
     print("--- [Node] SOP Generator (4-Step Chain) ---")
     query = state.get("search_query") or state["query"]
     docs = state.get("documents", [])
 
-    # Handle Document objects
+    # Document 객체 처리 (Handle Document objects)
     docs_text = []
     for d in docs:
         if hasattr(d, "page_content"):
@@ -106,13 +106,15 @@ def sop_retriever(state: AgentState) -> dict:
         else:
             docs_text.append(str(d))
 
-    context_text = "\n\n".join(docs_text)[:10000]  # Limit context length
+    context_text = "\n\n".join(docs_text)[
+        :10000
+    ]  # 컨텍스트 길이 제한 (Limit context length)
 
     llm = ModelFactory.get_rag_model(
         level="heavy", temperature=0
-    )  # Use heavy for reasoning
+    )  # 추론을 위해 Heavy 모델 사용
 
-    # Step 1: Fact Extraction
+    # 1단계: 사실 추출 (Step 1: Fact Extraction)
     print(" -> 1. Extracting Facts...")
     fact_chain = (
         ChatPromptTemplate.from_template(FACT_PROMPT)
@@ -129,14 +131,14 @@ def sop_retriever(state: AgentState) -> dict:
             "date": "-",
         }
 
-    # Step 2: Regulation Matching
+    # 2단계: 규정 매칭 (Step 2: Regulation Matching)
     print(" -> 2. Matching Regulations...")
     reg_chain = (
         ChatPromptTemplate.from_template(REGULATION_PROMPT) | llm | StrOutputParser()
     )
     regs = reg_chain.invoke({"facts": str(facts)})
 
-    # Step 3: Compliance Check
+    # 3단계: 규정 준수 확인 (Step 3: Compliance Check)
     print(" -> 3. Checking Compliance...")
     comp_chain = (
         ChatPromptTemplate.from_template(COMPLIANCE_PROMPT)
@@ -152,7 +154,7 @@ def sop_retriever(state: AgentState) -> dict:
             "matched_regulation": regs,
         }
 
-    # Step 4: Disposition
+    # 4단계: 처분 결정 (Step 4: Disposition)
     print(" -> 4. Determining Disposition...")
     disp_chain = (
         ChatPromptTemplate.from_template(DISPOSITION_PROMPT)
@@ -164,7 +166,7 @@ def sop_retriever(state: AgentState) -> dict:
     except:
         disposition = {"disposition": "Refer to Manual", "detail": "Logic Error"}
 
-    # Format Final Output for Generator
+    # Generator를 위한 최종 출력 포맷팅 (Format Final Output)
     sop_result = f"""
 [SOP Analysis Result]
 1. **Facts**: {facts}
@@ -174,6 +176,6 @@ def sop_retriever(state: AgentState) -> dict:
 """
     print(f" -> SOP Result: {compliance['status']} / {disposition['disposition']}")
 
-    # Save detailed results to state (optional, for debugging)
+    # 상세 결과를 주석 처리하거나 로그로 남깁니다. (Optional)
 
     return {"sop_context": sop_result}

@@ -7,20 +7,20 @@ from state import AgentState
 from model_factory import ModelFactory
 
 
-# --- Output Schema for Validation ---
+# --- 검증을 위한 출력 스키마 (Output Schema for Validation) ---
 class FieldSelectorOutput(BaseModel):
     selected_fields: List[str] = Field(
-        description="List of selected fields (must include 'outline' and 'problems')"
+        description="선택된 필드 리스트 (반드시 'outline'과 'problems' 포함)"
     )
     selected_fields_cot: List[str] = Field(
-        description="Chain of thought reasoning steps"
+        description="검색을 위한 논리적 추론 단계 (Chain of Thought)"
     )
     limit: int = Field(
-        description="Number of documents to retrieve (default 5, extract if user specifies quantity e.g. '2개', 'top 3')",
+        description="검색할 문서의 개수 (기본값 5, 사용자가 '2개', 'top 3' 등 수량을 명시한 경우 추출)",
         default=5,
     )
     sort: str = Field(
-        description="Sort order: 'date_desc' (latest/최신), 'date_asc' (oldest), or 'relevance' (default).",
+        description="정렬 순서: 'date_desc' (최신순), 'date_asc' (오래된순), 또는 'relevance' (기본값, 정확도순).",
         default="relevance",
     )
 
@@ -92,26 +92,26 @@ FIELD_SELECTOR_USER = """
 
 def field_selector(state: AgentState) -> dict:
     """
-    Field Selector Node:
-    Analyzes the user's query to extract metadata filters and select relevant fields
-    using Chain-of-Thought (CoT) reasoning.
+    [Node] 필드 선택기 (Field Selector):
+    사용자의 질문을 분석하여 메타데이터 필터를 추출하고,
+    CoT(Chain-of-Thought) 추론을 통해 검색에 필요한 관련 필드를 선택합니다.
     """
     print("--- [Node] Field Selector (CoT) ---")
-    # Priority: Original Query (User Input) preserves "latest", "2 docs" intents best.
-    # search_query might be keyword-optimized and strip these modifiers.
+    # 우선순위: 원본 질문(Original Query)을 사용하여 "최신", "2개" 같은 의도를 파악합니다.
+    # 'search_query'는 키워드 위주로 최적화되어 수식어가 제거되었을 수 있기 때문입니다.
     question = state["query"]
 
-    # Format History
+    # 대화 기록 포맷팅 (Format History)
     history_msgs = state.get("messages", [])
     history_text = ""
     if history_msgs:
-        # Take last 3 turns
+        # 최근 3개 턴만 사용
         recent = history_msgs[-3:]
         history_text = "\n".join(
             [f"{m.get('role', 'unknown')}: {m.get('content', '')}" for m in recent]
         )
 
-    # 1. Initialize LLM
+    # 1. LLM 초기화
     llm = ModelFactory.get_eval_model(level="light", temperature=0)
     parser = JsonOutputParser(pydantic_object=FieldSelectorOutput)
 
@@ -122,37 +122,37 @@ def field_selector(state: AgentState) -> dict:
         ]
     )
 
-    # Inject format instructions
+    # 포맷 지침 주입 (Inject format instructions)
     prompt = prompt.partial(format_instructions=parser.get_format_instructions())
 
-    # 2. Invoke Chain
+    # 2. 체인 실행 (Invoke Chain)
     chain = prompt | llm | parser
 
     try:
         result = chain.invoke({"question": question, "history": history_text})
 
-        # 3. Post-process Results
+        # 3. 결과 후처리 (Post-process Results)
         selected_fields = result.get("selected_fields", [])
         cot = result.get("selected_fields_cot", [])
 
-        # Enforce duplicates removal and mandatory fields
+        # 중복 제거 및 필수 필드(mandatory fields) 강제 포함
         merged_fields = list(set(selected_fields))
         if "outline" not in merged_fields:
             merged_fields.append("outline")
         if "problems" not in merged_fields:
             merged_fields.append("problems")
 
-        # Metadata logic (Simple mapping based on fields/keywords for now)
-        # We assume specific category extraction is handled if 'category' is implied,
-        # but sticking to notebook logic which focuses on FIELDS.
+        # 메타데이터 로직 (현재는 필드/키워드 기반의 단순 매핑)
+        # 구체적인 카테고리 추출은 별도 로직이 담당한다고 가정하지만,
+        # 여기서는 노트북의 로직을 따라 FIELDS 선택에 집중합니다.
         extracted_filters = {}
 
-        # Extract limit
+        # limit(문서 개수) 추출
         limit = result.get("limit", 5)
-        if limit and limit != 5:  # Only add if strictly specified
+        if limit and limit != 5:  # 명시적으로 지정된 경우에만 추가
             extracted_filters["k"] = limit
 
-        # Extract strict sort
+        # 정렬 기준(Sort) 추출
         sort_order = result.get("sort", "relevance")
         if sort_order and sort_order != "relevance":
             extracted_filters["sort"] = sort_order

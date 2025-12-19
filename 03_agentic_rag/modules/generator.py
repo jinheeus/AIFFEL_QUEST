@@ -11,7 +11,7 @@ generator_llm = ChatClovaX(model=Config.LLM_MODEL, temperature=0.1, max_tokens=2
 def generate_answer(state: AgentState) -> AgentState:
     """
     [Node] 검색된 문서 또는 통계 결과를 바탕으로 최종 답변을 생성합니다.
-    페르소나에 따라 다른 프롬프트를 사용합니다.
+    페르소나에 따라 적절한 프롬프트를 사용하여 응답을 구성합니다.
     """
     print(f"\n[Node] generate_answer: 답변 생성 중...")
     # 0. Reflection Count 증가
@@ -44,25 +44,26 @@ def generate_answer(state: AgentState) -> AgentState:
         print(f" -> 피드백 반영하여 재생성 중: {feedback}")
         system_msg += f"\n\n[이전 답변에 대한 피드백]\n{feedback}\n이 피드백을 반영하여 답변을 수정하세요."
 
-    # Context format (Handle both string and Document objects)
+    # 컨텍스트 형식화 (Context Format)
+    # 문자열과 Document 객체를 모두 처리합니다.
     docs_text = []
     documents = state.get("documents", [])
     for d in documents:
         if hasattr(d, "page_content"):
-            # Include Metadata for Generator
+            # 생성기를 위한 메타데이터 포함 (Include Metadata)
             meta = d.metadata
 
-            # Extract key fields
+            # 주요 필드 추출 (Extract key fields)
             date_info = meta.get("date", "Unknown")
             title_info = meta.get(
                 "title", meta.get("source_type", "Unknown")
-            )  # Use source_type as title fallback
+            )  # source_type을 제목 대체제로 사용
             company = meta.get("company_name", "Unknown")
             category = meta.get("category", meta.get("cat", "Unknown"))
             file_path = meta.get("file_path", "")
             download_url = meta.get("download_url", "")
 
-            # Construct robust info block
+            # 견고한 정보 블록 구성 (Construct robust info block)
             meta_block = f"""[[문서 정보]]
 - 날짜: {date_info}
 - 제목/출처: {title_info}
@@ -81,7 +82,8 @@ def generate_answer(state: AgentState) -> AgentState:
 
     context_text = "\n\n---\n\n".join(docs_text)
 
-    # [Safety] If context is empty, provide explicit placeholder to prevent API 400 errors or hallucinations
+    # [Safety] 컨텍스트가 비어있을 경우, 명시적인 플레이스홀더를 제공하여
+    # API 400 에러나 환각(Hallucination)을 방지합니다.
     if not context_text.strip():
         context_text = "검색된 관련 문서가 없습니다. (No documents found)"
 
@@ -95,8 +97,8 @@ def generate_answer(state: AgentState) -> AgentState:
         sop_text = state["sop_context"]
         context_text += f"\n\n[Standard Operating Procedures (SOP)]\n{sop_text}"
 
-    # [Previous Context Persistance]
-    # 이전 턴에서 검색되었던 문서들을 제공하여 "아까 그 문서", "2번 문서" 등의 참조 해결
+    # [이전 컨텍스트 유지 (Previous Context Persistence)]
+    # 이전 턴에서 검색되었던 문서들을 제공하여 "아까 그 문서", "2번 문서" 등의 참조를 해결합니다.
     persist_docs = state.get("persist_documents", [])
     print(f" -> [Generator Debug] Persisted Docs Available: {len(persist_docs)}")
 
@@ -104,7 +106,7 @@ def generate_answer(state: AgentState) -> AgentState:
         p_docs_text = []
         for d in persist_docs:
             if hasattr(d, "page_content"):
-                # Simple format for previous context (Metadata is key here)
+                # 이전 컨텍스트를 위한 단순 포맷 (Metadata가 핵심)
                 meta = d.metadata
                 title_info = meta.get("title", meta.get("source_type", "Unknown"))
                 date_info = meta.get("date", "Unknown")
@@ -122,7 +124,7 @@ def generate_answer(state: AgentState) -> AgentState:
                 + "\n---\n".join(p_docs_text)
             )
 
-    # Chat History 병합 (Memory) - [Modified] Hybrid Memory (Summary + Recent)
+    # 채팅 기록 병합 (Chat History Merger) - [Modified] 하이브리드 메모리 (요약 + 최신 대화)
     chat_history_str = ""
     summary = state.get("summary", "")
 
@@ -131,7 +133,7 @@ def generate_answer(state: AgentState) -> AgentState:
 
     if state.get("messages"):
         history_msgs = []
-        # 최근 4개 메시지만 사용 (Token 절약) - 이미 Summary가 있으므로 짧게 유지
+        # 최근 4개 메시지만 사용 (Token 절약) - 이미 Summary가 있으므로 짧게 유지합니다.
         for msg in state["messages"][-4:]:
             role = "User" if msg.get("role") == "user" else "Assistant"
             content = msg.get("content", "")

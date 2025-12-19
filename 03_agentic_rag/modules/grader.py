@@ -4,32 +4,20 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 from typing import List, Literal
 
-# Import ModelFactory (Assume it exists in parent or sibling, adjusting path relative to this file)
-# Since this is in modules/, we need to import from ..model_factory if it exists there,
-# or assume it's available via sys path. Let's use relative import based on existing structure.
-try:
-    from model_factory import ModelFactory
-except ImportError:
-    # Fallback/Mock if running standalone validation
-    from langchain_openai import ChatOpenAI
-
-    class ModelFactory:
-        @staticmethod
-        def get_rag_model(level="heavy", temperature=0):
-            return ChatOpenAI(model="gpt-4o-mini", temperature=temperature)
+from model_factory import ModelFactory
 
 
-# --- LLM Initialization ---
-# Use 'eval' model (GPT-4o-mini / Gemini Flash) for grading as it supports structured output better than HCX.
+# --- LLM 초기화 ---
+# 평가(Evaluation) 모델은 구조화된 출력(Structured Output)을 잘 지원하는 모델(GPT-4o-mini 등)을 사용합니다.
 llm = ModelFactory.get_eval_model(level="light", temperature=0)
 
 
-# --- 1. Retrieval Grader (Effectiveness check) ---
+# --- 1. 문서 평가기 (Retrieval Grader) ---
 class GradeRetrieval(BaseModel):
-    """Binary score for relevance check on retrieved documents."""
+    """검색된 문서의 관련성(Relevance) 점수."""
 
     binary_score: str = Field(
-        description="Documents are relevant to the question, 'yes' or 'no'"
+        description="문서가 질문과 관련이 있는지 여부, 'yes' 또는 'no'"
     )
 
 
@@ -57,7 +45,7 @@ retrieval_grader_chain = retrieval_grader_prompt | llm.with_structured_output(
 
 def grade_documents(question: str, documents: List[Document]) -> dict:
     """
-    Grades the relevance of retrieved documents.
+    검색된 문서들의 관련성(Relevance)을 평가합니다.
     """
     print("--- [Modular RAG] Grading Documents ---")
 
@@ -97,12 +85,12 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
     }
 
 
-# --- 2. Hallucination Grader (Groundedness check) ---
+# --- 2. 환각 평가기 (Hallucination Grader) ---
 class GradeHallucinations(BaseModel):
-    """Binary score for hallucination check in generation."""
+    """답변의 환각 여부(Groundedness) 점수."""
 
     binary_score: str = Field(
-        description="Answer is grounded in the facts, 'yes' or 'no'"
+        description="답변이 사실(Facts)에 기반하는지 여부, 'yes' 또는 'no'"
     )
 
 
@@ -131,7 +119,7 @@ hallucination_grader_chain = hallucination_grader_prompt | llm.with_structured_o
 
 def grade_hallucination(generation: str, documents: List[Document]) -> str:
     """
-    Checks if the generation is grounded in the documents.
+    생성된 답변이 문서에 근거(Grounded)하고 있는지 확인합니다.
     """
     print("--- [Modular RAG] Grading Hallucination ---")
 
@@ -152,12 +140,12 @@ def grade_hallucination(generation: str, documents: List[Document]) -> str:
     return score.binary_score
 
 
-# --- 3. Answer Grader (Helpfulness check) ---
+# --- 3. 답변 유용성 평가기 (Answer Grader) ---
 class GradeAnswer(BaseModel):
-    """Binary score to assess answer addresses question."""
+    """답변이 질문을 해결했는지(Utility) 점수."""
 
     binary_score: str = Field(
-        description="Answer addresses the question, 'yes' or 'no'"
+        description="답변이 질문을 다루고/해결하고 있는지 여부, 'yes' 또는 'no'"
     )
 
 
@@ -182,7 +170,7 @@ answer_grader_chain = answer_grader_prompt | llm.with_structured_output(GradeAns
 
 def grade_answer(question: str, generation: str) -> str:
     """
-    Checks if the answer helps the user.
+    답변이 사용자에게 유용한지(Helpfulness) 확인합니다.
     """
     print("--- [Modular RAG] Grading Answer Utility ---")
 

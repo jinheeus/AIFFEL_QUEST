@@ -264,7 +264,11 @@ class VectorRetriever:
                 seen_parents.add(h)
                 candidates.append(parent_doc)
 
-        # --- 5. 리랭킹 (Reranking) ---
+        # --- 5. 타이틀 복구 (Metadata Hydration) ---
+        # Reranking 및 Logging 전에 타이틀을 복구하여 로그 가독성 및 정확도 향상
+        candidates = self._hydrate_missing_titles(candidates)
+
+        # --- 6. 리랭킹 (Reranking) ---
         final_docs = candidates
         if use_reranker and candidates:
             # [Filters]
@@ -297,16 +301,14 @@ class VectorRetriever:
                 print(f"   [Reranker] Top Score: {scored[0][1]:.4f}")
                 # [DEBUG] Log actual retrieved titles
                 for i, (d, s) in enumerate(scored[:5]):  # show top 5 logic
-                    title = d.metadata.get(
-                        "title", d.metadata.get("source_type", "No Title")
-                    )
+                    title = d.metadata.get("title", "No Title")
                     print(f"   -> [Doc {i + 1}] Score: {s:.4f} | Title: {title}")
             else:
                 print("   [Reranker] All candidates filtered by threshold (0.35)")
         else:
             final_docs = candidates
 
-        # --- 6. 검색 후 정렬 (Post-Retrieval Sorting) ---
+        # --- 7. 검색 후 정렬 (Post-Retrieval Sorting) ---
         if "sort" in filters:
             final_docs = self._apply_sorting(final_docs, filters["sort"])
 
@@ -315,6 +317,37 @@ class VectorRetriever:
 
         print(f"   [Hybrid] Retrieved {len(final_docs)} final contexts.")
         return final_docs
+
+    def _hydrate_missing_titles(self, docs: List[Document]) -> List[Document]:
+        """
+        문서 텍스트(parent_text 또는 text) 내부의 [Title]: 패턴에서 제목을 추출하여 메타데이터를 보강합니다.
+        기존 메타데이터 유무와 상관없이 추출하여 덮어씁니다 (Source Truth = Content).
+        """
+        import re
+
+        for d in docs:
+            meta = d.metadata
+            parent_text = meta.get("parent_text", "")
+            text = d.page_content
+
+            extracted_title = None
+
+            # 1. parent_text에서 [Title]: 패턴 찾기
+            # 예: [Title]: 인천국제공항 보안검색...
+            match = re.search(r"\[Title\]:\s*(.+)", parent_text)
+            if match:
+                extracted_title = match.group(1).strip()
+            else:
+                # 2. text에서 찾기 (fallback)
+                match = re.search(r"\[Title\]:\s*(.+)", text)
+                if match:
+                    extracted_title = match.group(1).strip()
+
+            # 추출된 타이틀이 있으면 메타데이터 업데이트
+            if extracted_title:
+                meta["title"] = extracted_title
+
+        return docs
 
     def _apply_sorting(self, docs: List[Document], sort_mode: str) -> List[Document]:
         """

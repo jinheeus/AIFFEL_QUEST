@@ -31,16 +31,29 @@ body {
 }
 
 /* Links */
+/* Links */
 .markdown-prose a {
-    color: #2563eb;
-    /* blue-600 */
-    text-decoration: underline;
+    color: #3b82f6 !important;
+    /* blue-500 */
+    text-decoration: none !important;
+    /* Remove default underline */
     font-weight: 500;
+    transition: color 0.2s;
 }
 
 .markdown-prose a:hover {
-    color: #1d4ed8;
-    /* blue-700 */
+    color: #2563eb !important;
+    /* blue-600 */
+    text-decoration: underline !important;
+}
+
+/* Horizontal Rule (Separator) */
+.markdown-prose hr {
+    border: 0;
+    border-top: 1px solid #e5e7eb !important;
+    /* gray-200 (lighter) */
+    margin-top: 2.5em !important;
+    margin-bottom: 2em !important;
 }
 
 /* Headings */

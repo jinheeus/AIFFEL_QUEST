@@ -23,6 +23,13 @@ export default function Home() {
     const [currentThoughts, setCurrentThoughts] = useState<ThoughtStep[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // [New] Unique Session ID per page refresh
+    // Using useRef with lazy initialization to ensure it's created once per mount
+    const sessionId = useRef<string>('');
+    if (!sessionId.current) {
+        sessionId.current = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    }
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
@@ -32,6 +39,10 @@ export default function Home() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!query.trim() || isLoading) return;
+
+        // [New] Generate Session ID if not present (although useState initializer handles it)
+        // Ensure we use the current sessionId state
+        const currentSessionId = sessionId.current;
 
         const history = messages.map(m => ({ role: m.role, content: m.content }));
         const userMsg: Message = { role: 'user', content: query };
@@ -47,8 +58,9 @@ export default function Home() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: userMsg.content,
-                    persona: 'auditor',
-                    history: history
+                    // persona field removed
+                    history: history,
+                    session_id: currentSessionId, // [New] Pass unique session ID
                 }),
             });
 

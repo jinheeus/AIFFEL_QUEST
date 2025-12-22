@@ -187,5 +187,43 @@ def generate_answer(state: AgentState) -> AgentState:
         }
     )
 
+    # [Source Citation Auto-Append]
+    # 답변 하단에 [참고 문서] 섹션을 자동으로 추가하여 신뢰도를 높입니다.
+    if documents:
+        source_data = {}  # {title: {'link': link, 'count': count}}
+
+        for d in documents:
+            if hasattr(d, "page_content"):
+                meta = d.metadata
+                # 제목 추출 (없으면 source_type 사용)
+                title = meta.get("title") or meta.get("source_type") or "무제 문서"
+                # 링크 추출 (download_url 우선, 없으면 file_path)
+                link = meta.get("download_url") or meta.get("file_path")
+
+                # 데이터 집계
+                if title not in source_data:
+                    source_data[title] = {"link": link, "count": 1}
+                else:
+                    source_data[title]["count"] += 1
+
+        if source_data:
+            answer += "\n\n---\n**[참고 문서]**\n"
+            for title, data in source_data.items():
+                link = data["link"]
+                count = data["count"]
+
+                # 표시할 제목 (2건 이상이면 건수 표시)
+                display_title = title
+                if count > 1:
+                    display_title = f"{title} ({count}건 관련)"
+
+                if link and link.startswith("http"):
+                    answer += f"- [{display_title}]({link})\n"
+                elif link:
+                    # 로컬 경로거나 URL이 아닌 경우 텍스트로 표기 (또는 필요시 file:// 처리)
+                    answer += f"- {display_title} (파일: {link})\n"
+                else:
+                    answer += f"- {display_title}\n"
+
     state["answer"] = answer
     return state

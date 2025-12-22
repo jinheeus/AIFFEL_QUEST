@@ -6,89 +6,72 @@
 
 ```mermaid
 graph TD
-    %% --- Subgraph: Router Logic ---
-    subgraph Router_Box ["Router Component"]
-        direction TB
-        Input(("User Input")) --> Keyword{"Contains<br>'Hello'?"}
-        Keyword -- Yes --> ChatNode["Chat Worker<br/>Simple Response"]
-        Keyword -- No --> Classify["LLM Classifier<br/>Intent & Pivot"]
-        Classify --> CheckInt{"Intent?"}
-        Classify --> PivotCheck{{"New Topic?<br/>(Context Clear)"}}
-    end
+    %% --- Nodes (Match graph.py) ---
+    Start((Start))
+    Router["Router<br/>(node_router)"]
+    ChatWorker["Chat Worker<br/>(chat_worker)"]
+    RetrieveSQL["Retrieve SQL<br/>(node_retrieve_sql)"]
+    FieldSelector["Field Selector<br/>(field_selector)"]
+    HybridRetriever["Hybrid Retriever<br/>(node_retrieve)"]
+    GradeDocuments["Grade Documents<br/>(node_grade_documents)"]
+    RewriteQuery["Rewrite Query<br/>(node_rewrite)"]
+    SOPRetriever["SOP Retriever<br/>(sop_retriever)"]
+    Generate["Generate<br/>(node_generate)"]
+    VerifyAnswer["Verify Answer<br/>(node_consistency_check)"]
+    Summarize["Summarize<br/>(summarize_conversation)"]
+    EndNode((End))
 
-    %% --- Subgraph: Fast Track (SQL) ---
-    subgraph Fast_Box ["Fast Retrieval"]
-        direction TB
-        SQL["SQL Retriever<br/>Metadata/Date Search"]
-    end
+    %% --- Edges ---
+    Start --> Router
 
-    %% --- Subgraph: RAG Preparation ---
-    subgraph Planner_Box ["Field Selector (Planner)"]
-        direction TB
-        Analyze["CoT Analysis<br/>Step-by-Step Plan"] --> Extract["Metadata Extractor<br/>Filter: Year/Source"]
-        Extract --> Refine["Search Query<br/>Keyword Refinement"]
-    end
+    %% Router routing (route_start)
+    Router -- "chat" --> ChatWorker
+    Router -- "fast" --> RetrieveSQL
+    Router -- "deep" --> FieldSelector
 
-    %% --- Subgraph: Hybrid Retrieval ---
-    subgraph Retriever_Box ["Hybrid Retriever Engine"]
-        direction TB
-        Fork((Fork)) --> Sparse["Sparse Search<br/>BM25 + Kiwi"]
-        Fork --> Dense["Dense Search<br/>Milvus + Embedding"]
-        Sparse --> Fusion["RRF Fusion<br/>Reciprocal Rank"]
-        Dense --> Fusion
-        Fusion --> Rerank["Cross Encoder<br/>BGE-Reranker"]
-        Rerank --> TopK{"Top-5?"}
-    end
+    %% Chat Branch
+    ChatWorker --> EndNode
 
-    %% --- Subgraph: SOP Execution ---
-    subgraph SOP_Box ["SOP Engine"]
-        direction TB
-        Fact["Fact Extraction<br/>5W1H Analysis"] --> Match["Regulation Match<br/>Law/Precedent"]
-        Match --> Compliance["Compliance Check<br/>Violation Detection"]
-        Compliance --> Dispo["Disposition<br/>Action Decision"]
-    end
+    %% Fast/SQL Branch (route_post_retrieval)
+    RetrieveSQL -- "fast mode" --> Generate
+    RetrieveSQL -- "deep mode (theoretically)" --> GradeDocuments
 
-    %% --- Subgraph: Verification & Memory ---
-    subgraph Verifier_Box ["Verification Loop"]
-        direction TB
-        HalluCheck{"Hallucination<br/>Grounded?"} 
-        UtilCheck{"Utility<br/>Helpful?"}
-        Memory["Summary Memory<br/>Compress & Save"]
-    end
+    %% Deep/Hybrid Branch
+    FieldSelector --> HybridRetriever
+    HybridRetriever -- "deep mode" --> GradeDocuments
+    HybridRetriever -- "fast mode" --> Generate
 
-    %% --- Main Flow Connections ---
-    CheckInt -- Chat --> ChatNode
-    CheckInt -- Fast --> SQL
-    SQL --> Generate
-    
-    CheckInt -- Deep --> Analyze
-    
-    Refine --> Fork
-    TopK --> GradeLogic{"Grader<br/>Relevant?"}
-    
-    GradeLogic -- Yes --> Fact
-    GradeLogic -- No --> Rewrite["Query Rewriter"]
-    Rewrite --> Fork
-    
-    Dispo --> Generate["Generator<br/>Draft Answer"]
-    Generate --> HalluCheck
-    
-    HalluCheck -- Fail --> Generate
-    HalluCheck -- Pass --> UtilCheck
-    
-    UtilCheck -- Fail --> Rewrite
-    UtilCheck -- Pass --> Memory
-    
-    Memory --> EndNode((End))
-    ChatNode --> EndNode
+    %% Grader Loop (route_retrieval)
+    GradeDocuments -- "Relevant / Max Retry" --> SOPRetriever
+    GradeDocuments -- "Irrelevant" --> RewriteQuery
+    RewriteQuery --> HybridRetriever
+
+    %% SOP -> Generate
+    SOPRetriever --> Generate
+
+    %% Generation Output (route_post_generation)
+    Generate -- "fast mode" --> Summarize
+    Generate -- "deep mode" --> VerifyAnswer
+
+    %% Verification Loop (route_verification)
+    VerifyAnswer -- "Hallucinated" --> Generate
+    VerifyAnswer -- "Not Useful" --> RewriteQuery
+    VerifyAnswer -- "Useful / Max Retry" --> Summarize
+
+    %% Finalize
+    Summarize --> EndNode
 
     %% --- Styling ---
-    style Router_Box fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Fast_Box fill:#e0f7fa,stroke:#006064,stroke-width:2px
-    style Planner_Box fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style Retriever_Box fill:#e3f2fd,stroke:#0d47a1,stroke-width:2px
-    style SOP_Box fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    style Verifier_Box fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef router fill:#fff3e0,stroke:#e65100;
+    classDef worker fill:#e1f5fe,stroke:#01579b;
+    classDef check fill:#ffebee,stroke:#b71c1c;
+    classDef final fill:#e8f5e9,stroke:#1b5e20;
+
+    class Router router;
+    class ChatWorker,RetrieveSQL,FieldSelector,HybridRetriever,SOPRetriever,RewriteQuery,Generate worker;
+    class GradeDocuments,VerifyAnswer check;
+    class Summarize final;
 ```
 
 ## 핵심 컴포넌트 (Core Components)

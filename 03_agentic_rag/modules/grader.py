@@ -22,11 +22,11 @@ class GradeRetrieval(BaseModel):
 
 
 retrieval_grader_system = """[Role]
-You are a grader assessing relevance of a retrieved document to a user question.
+당신은 검색된 문서가 사용자의 질문과 관련이 있는지 평가하는 평가자(Grader)입니다.
 
 [Goal]
-Check if the document contains keywords or semantic meaning related to the user question.
-It does not need to be a stringent test. The goal is to filter out erroneous retrievals.
+문서가 질문과 관련된 키워드나 의미론적 연관성을 포함하는지 확인하십시오.
+엄격한 기준을 적용할 필요는 없으며, 명백히 관련 없는 문서(erroneous retrievals)만 걸러내면 됩니다.
 
 [Output]
 Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
@@ -95,12 +95,12 @@ class GradeHallucinations(BaseModel):
 
 
 hallucination_grader_system = """[Role]
-You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts.
+당신은 LLM이 생성한 답변이 제공된 "Fact(사실 문서)"들에 근거하고 있는지 평가하는 채점관입니다.
 
 [Goal]
-Check if the answer is grounded in the provided documents.
-'yes' means the answer is fully supported by the documents.
-'no' means the answer contains information not present in the documents (hallucination).
+답변이 제공된 문서들에 있는 내용으로만 작성되었는지 확인하십시오.
+- 'yes': 답변이 문서의 내용에 의해 완전히 뒷받침됨.
+- 'no': 답변에 문서에 없는 내용(환각/외부지식)이 포함됨.
 
 [Output]
 Give a binary score 'yes' or 'no'."""
@@ -150,10 +150,10 @@ class GradeAnswer(BaseModel):
 
 
 answer_grader_system = """[Role]
-You are a grader assessing whether an answer addresses / resolves a question.
+당신은 답변이 사용자의 질문을 실질적으로 해결했는지 평가하는 평가자입니다.
 
 [Goal]
-Ensure the answer actually responds to the user's intent.
+답변이 사용자의 의도나 질문에 올바르게 대응하고 있는지(유용한지) 확인하십시오.
 
 [Output]
 Give a binary score 'yes' or 'no'."""

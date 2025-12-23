@@ -49,3 +49,4 @@ class AgentState(TypedDict):
     answer: str  # 최종 생성된 답변
     reflection_count: int  # 답변 재생성 횟수 (무한 루프 방지)
     feedback: str  # Reflector가 제공하는 피드백 (Generator가 참고)
+    command: str  # (New) 프론트엔드 명령 트리거 (예: "open_report")

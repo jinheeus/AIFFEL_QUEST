@@ -59,7 +59,6 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
             doc_id = "unknown"
         else:
             content = d.page_content
-            content = d.page_content
             # Try to get meaningful ID or snippet
             doc_id = (
                 d.metadata.get("source")

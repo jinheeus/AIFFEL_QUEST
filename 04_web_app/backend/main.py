@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from graph import app as rag_app  # The compiled LangGraph app
+from modules.drafting_agent import DraftingAgent
 
 app = FastAPI(title="Agentic RAG API")
 
@@ -50,6 +51,7 @@ class ChatRequest(BaseModel):
     # persona field removed
     history: list = []  # (New) history input
     session_id: str = "default_session"  # New: for persistent memory
+    additional_info: dict = {}  # New: for report generation inputs
 
 
 NODE_NAMES = {
@@ -120,11 +122,16 @@ async def event_generator(
                     "reflect_answer",
                     "judge_verdict",
                     "determine_disposition",
+                    "report_manager",  # Added
                 ]
 
                 if key in final_answer_nodes:
                     if "answer" in value and value["answer"]:
                         yield f"data: {json.dumps({'type': 'answer', 'content': value['answer']})}\n\n"
+
+                    # [New] Command Handling (e.g., Open Report)
+                    if "command" in value and value["command"]:
+                        yield f"data: {json.dumps({'type': 'command', 'content': value['command']})}\n\n"
 
         yield "data: [DONE]\n\n"
 
@@ -148,6 +155,75 @@ async def chat_endpoint(request: ChatRequest):
         event_generator(request.query, request.history, session_id),
         media_type="text/event-stream",
     )
+
+
+@app.post("/check_report_readiness")
+async def check_report_readiness_endpoint(request: ChatRequest):
+    """
+    Checks if there is enough information to generate a report.
+    """
+    print(f"🔹 [API] Checking Readiness for Session: {request.session_id}")
+    agent = DraftingAgent()
+    result = agent.analyze_requirements(request.history)
+    return result
+
+
+@app.post("/generate_report")
+async def generate_report_endpoint(request: ChatRequest):
+    """
+    Generates a formal audit report based on conversation history.
+    """
+    print(f"🔹 [API] Generating Report for Session: {request.session_id}")
+    print(f"   -> Additional Info: {request.additional_info}")
+
+    # 1. Initialize Components
+    agent = DraftingAgent()
+    from modules.vector_retriever import get_retriever
+
+    retriever = get_retriever()
+
+    # 2. Construct Search Query for Context (Source B)
+    # Priority: Additional Info > Last User Message
+    search_query = ""
+    if request.additional_info:
+        # Combine key fields
+        subjects = [
+            request.additional_info.get("대상 기관", ""),
+            request.additional_info.get("사건 제목", ""),
+            request.additional_info.get("문제점", ""),
+        ]
+        search_query = " ".join([s for s in subjects if s]).strip()
+
+    if not search_query and request.history:
+        # Fallback to last user message
+        for msg in reversed(request.history):
+            if msg["role"] == "user":
+                search_query = msg["content"]
+                break
+
+    if not search_query:
+        search_query = "감사 보고서 작성 일반 규정"
+
+    print(f"   -> Retrieval Query: '{search_query}'")
+
+    # 3. Retrieve Documents (Source B)
+    try:
+        retrieved_docs = retriever.search_and_merge(search_query, top_k=3)
+        print(f"   -> Retrieved {len(retrieved_docs)} documents for context.")
+    except Exception as e:
+        print(f"   -> ⚠️ Retrieval Failed: {e}")
+        retrieved_docs = []
+
+    # 4. Generate Report
+    report_content = agent.generate_report(
+        messages=request.history,
+        retrieved_docs=retrieved_docs,
+        additional_info=request.additional_info,
+    )
+
+    # Streaming response (simulating stream for UI consistency, or just text)
+    # Using simple text response for now as it's a single block generation
+    return {"report": report_content}
 
 
 @app.get("/health")

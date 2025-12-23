@@ -90,23 +90,33 @@ def node_router(state: AgentState):
 
         system_prompt = """You are an intent classifier for an Audit RAG system.
         
-        Classify the query into one of three categories:
+        Classify the query into one of four categories:
         1. 'chat': Casual conversation, greetings, self-introduction, or non-audit questions.
-        2. 'fast': Simple information retrieval, fact lookup, list requests (e.g., 'latest 2 cases', 'Gas Corp 3 cases'), OR specific follow-up questions about the previous answer (e.g., 'tell me more about #2', 'give me the file for #1'). Requires NO complex reasoning/planning.
-        3. 'deep': Complex analysis, comparison, cause-effect analysis, or drafting reports. Requires multi-step reasoning.
+        2. 'fast': Simple information retrieval, fact lookup, list requests.
+           - Examples: "근무태만 사례 3개만 찾아줘" (Specific count/entity), "latest 2 cases", "Gas Corp 3 cases".
+           - Use 'fast' when the user asks for specific entities or counts.
+        3. 'deep': Complex analysis, comparison, cause-effect analysis, or searching for information *to be used in* a report.
+           - Examples: "보고서 써야 하니까 횡령 관련 자료 다 가져와봐" (Research phase), "Compare these two cases", "Analyze the root cause".
+        4. 'report': User explicitly asks to *WRITE*, *DRAFT*, or *GENERATE* the actual audit report document NOW.
+           - Examples: "방금 찾은 2번 사례로 보고서 초안 작성해줘", "내용은 충분한 것 같아. 이제 보고서 뽑아줘", "Open report mode".
+           - **Explicit Info Provision**: If the user provides specific details (Date, Amount, Content) and asks to write the report, OR just provides the facts to fill in the missing info, this is 'report'. 
+             - e.g., "Here is the info: 2025, 200m won. Write the report." -> 'report'.
+             - e.g., "Agency is KOGAS, Period is 2025." (Answering bot's question) -> 'report' | False (Keep context).
+           - CRITICAL distinction: "I need to write a report, so find X" -> This is 'deep' (Search), NOT 'report'.
 
         [Pivot Detection]
         Determine if the user is pivoting to a completely NEW topic (New Entity, New Company, New Search) or asking a FOLLOW-UP question about the previous context.
         - "Gas Corp 3 cases" -> New Topic: TRUE
         - "Tell me more about the first one" -> New Topic: FALSE
         - "Summarize that" -> New Topic: FALSE
-        - "Incheon Airport again?" -> New Topic: TRUE (Explicitly mentioning entity usually implies search, but if it matches current context it might be follow-up. Treat explicit entity search as New Topic if it replaces the old one.)
+        - "Draft a report for this" -> New Topic: FALSE (Usually uses existing context)
 
         [Output Format]
         Return a single line with: Category | NewTopic(True/False)
         Example 1: fast | True
         Example 2: fast | False
         Example 3: chat | True
+        Example 4: report | False
         """
 
         prompt = ChatPromptTemplate.from_messages(
@@ -133,13 +143,42 @@ def node_router(state: AgentState):
             category_part = cleaned_text
             new_topic_part = cleaned_text
 
-        # Determine Category
-        if "fast" in category_part:
+        # Robust Parsing
+        if "report" in category_part:
+            category = "report"
+        elif "fast" in category_part:
             category = "fast"
         elif "chat" in category_part:
             category = "chat"
         else:
             category = "deep"  # default
+
+        # NewTopic 판단도 유사하게
+        # Default to True, but check if user explicitly said false
+        is_new_topic = True
+
+        # Check parsing from pipe if available
+        if "|" in cleaned_text:
+            # Check the second part
+            second_part = parts[1].strip().lower() if len(parts) > 1 else ""
+            if "false" in second_part:
+                is_new_topic = False
+        else:
+            # If no pipe, check the whole string for explicit 'false' near 'NewTopic' keyword if it existed,
+            # but since we stripped it, just rely on content.
+            pass
+
+        # [Safety Net]
+        # If category is 'report' but we have NO context (no persist_docs and short history),
+        # fallback to 'deep' (search) to find info first.
+        if category == "report":
+            has_context = len(persist_docs) > 0 or len(state["messages"]) > 2
+            if not has_context:
+                print(
+                    " -> [Router] Report intent detected but NO Context. Fallback to 'deep' search."
+                )
+                category = "deep"  # Fallback to search
+                is_new_topic = True  # Treat as new search
 
         # Determine New Topic (Default to True for safety)
         is_new_topic = True
@@ -159,6 +198,8 @@ def node_router(state: AgentState):
             category = "fast"
         elif "chat" in category_part:
             category = "chat"
+        elif "report" in category_part:
+            category = "report"
         else:
             category = "deep"  # default to deep if unsure
 
@@ -166,6 +207,8 @@ def node_router(state: AgentState):
             mode = "chat"
         elif "fast" in category:
             mode = "fast"
+        elif "report" in category:
+            mode = "report"
         else:
             mode = "deep"
 
@@ -206,6 +249,7 @@ def node_router(state: AgentState):
             "is_hallucinated": "no",
             "is_useful": "yes",
             "feedback": "",
+            "command": "",  # Init
         }
 
     except Exception as e:
@@ -241,6 +285,8 @@ def route_start(state: AgentState):
         return "chat_worker"
     elif mode == "fast":
         return "retrieve_sql"
+    elif mode == "report":
+        return "report_manager"
     else:
         # Deep RAG starts with Field Selector
         return "field_selector"
@@ -412,6 +458,41 @@ def node_retrieve_sql(state: AgentState):
     return {"documents": documents, "retrieval_count": 1}
 
 
+def node_report_manager(state: AgentState):
+    """
+    [Node] 보고서 작성 관리자 (Report Manager)
+    사용자의 보고서 작성 요청을 처리하고, 누락된 정보를 확인하거나 Frontend에 작성 모드 진입 명령을 보냅니다.
+    """
+    print("--- [Node] Report Manager ---")
+    from modules.drafting_agent import DraftingAgent
+
+    agent = DraftingAgent()
+
+    # 1. Readiness Check
+    result = agent.analyze_requirements(state["messages"])
+    status = result.get("status")
+
+    if status == "ready":
+        # Report Ready -> Trigger Frontend
+        print(" -> [Report Manager] Ready. Triggering Frontend.")
+        return {
+            "answer": "보고서 작성을 위한 정보가 충분합니다. 작성을 시작합니다...",
+            "command": "open_report",  # Signal to Frontend
+        }
+    else:
+        # Missing Info -> Ask User
+        missing = result.get("missing_fields", [])
+        print(f" -> [Report Manager] Missing: {missing}")
+
+        # Simple Logic: Formulate a question using LLM or Rule-based
+        # For now, rule-based approach for speed/reliability
+        missing_str = ", ".join(missing)
+        return {
+            "answer": f"보고서 작성을 위해 다음 정보가 더 필요합니다: {missing_str}. \n해당 정보를 말씀해 주시면 바로 초안을 작성해 드리겠습니다.",
+            "command": "",
+        }
+
+
 # --- 그래프 구성 (Graph Construction) ---
 
 workflow = StateGraph(AgentState)
@@ -419,6 +500,7 @@ workflow = StateGraph(AgentState)
 # Nodes
 workflow.add_node("router", node_router)  # Real Router Node
 workflow.add_node("chat_worker", chat_worker)
+workflow.add_node("report_manager", node_report_manager)  # New Node
 workflow.add_node("retrieve_sql", node_retrieve_sql)  # SQL Node
 workflow.add_node("field_selector", field_selector)
 workflow.add_node("hybrid_retriever", node_retrieve)
@@ -440,11 +522,13 @@ workflow.add_conditional_edges(
     {
         "chat_worker": "chat_worker",
         "retrieve_sql": "retrieve_sql",
+        "report_manager": "report_manager",
         "field_selector": "field_selector",
     },
 )
 
 workflow.add_edge("chat_worker", END)
+workflow.add_edge("report_manager", END)  # Report Manager is terminal for this turn
 
 # SQL 검색 체인 (검색 후 라우팅 연결)
 workflow.add_conditional_edges(

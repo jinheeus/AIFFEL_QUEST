@@ -12,9 +12,15 @@ class Config:
     HCX_MODEL_LIGHT = os.getenv(
         "HCX_MODEL_LIGHT", "HCX-DASH-002"
     )  # Fast (Extraction, Routing)
-    HCX_MODEL_HEAVY = os.getenv(
-        "HCX_MODEL_HEAVY", "HCX-003"
-    )  # Smart (Reasoning, Judgment)
+    HCX_MODEL_STANDARD = os.getenv(
+        "HCX_MODEL_STANDARD", "HCX-003"
+    )  # Balanced (Writer, Router)
+    HCX_MODEL_REASONING = os.getenv(
+        "HCX_MODEL_REASONING", "HCX-007"
+    )  # Deep Thinking (Analyst, SOP)
+
+    # Alias for backward compatibility (points to STANDARD by default)
+    HCX_MODEL_HEAVY = HCX_MODEL_STANDARD
 
     # Legacy Support (will be deprecated in favor of specific light/heavy usage)
     LLM_MODEL = HCX_MODEL_LIGHT

@@ -21,8 +21,16 @@ class ModelFactory:
         Returns HyperCLOVA X model for RAG tasks.
         :param level: 'light' (HCX-DASH) or 'heavy' (HCX-003)
         """
-        if level == "heavy":
-            model_name = Config.HCX_MODEL_HEAVY
+        if level == "reasoning":
+            model_name = Config.HCX_MODEL_REASONING
+            print(f"[ModelFactory] RAG Agent using {model_name} (Level: {level})")
+            return ChatClovaX(
+                model=model_name,
+                max_tokens=4096,  # Higher limit for deep thinking output
+                temperature=0.2,  # Slight creativity for complex analysis
+            )
+        elif level == "heavy":
+            model_name = Config.HCX_MODEL_HEAVY  # Defaults to STANDARD (003)
             print(f"[ModelFactory] RAG Agent using {model_name} (Level: {level})")
             return ChatClovaX(
                 model=model_name,

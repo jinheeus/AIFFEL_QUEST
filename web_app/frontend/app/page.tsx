@@ -596,6 +596,30 @@ function FloatingDots() {
     );
 }
 
+const NODE_NAME_MAP: Record<string, string> = {
+    // V1
+    "date_extract": "Date Extract",
+    "field_select": "Field Select",
+    "retrieve": "Retrieve",
+    "rerank": "Rerank",
+    "validate": "Validate",
+    "rewrite": "Rewrite",
+    "generate": "Generate",
+
+    // V2
+    "router": "Router",
+    "chat_worker": "Chat Mode",
+    "report_manager": "Report Manager",
+    "retrieve_sql": "SQL Retrieve",
+    "field_selector": "Field Select",
+    "hybrid_retriever": "Hybrid Retrieve",
+    "grade_documents": "Grade Docs",
+    "sop_retriever": "SOP Retrieve",
+    "rewrite_query": "Rewrite Query",
+    "verify_answer": "Verify Answer",
+    "summarize_conversation": "Summarize",
+};
+
 function ThoughtProcessView({ steps, isDone }: { steps: ThoughtStep[], isDone: boolean }) {
     const [isOpen, setIsOpen] = useState(false);
     return (
@@ -606,18 +630,19 @@ function ThoughtProcessView({ steps, isDone }: { steps: ThoughtStep[], isDone: b
             >
                 <div className="flex items-center gap-2">
                     {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                    <span>{isDone ? `Context Process (${steps.length})` : 'Processing...'}</span>
+                    <span>{isDone ? `처리 과정 확인 (${steps.length})` : '분석 중...'}</span>
                 </div>
             </button>
             {isOpen && (
                 <div className="px-3 pb-3 space-y-1.5">
                     {steps.map((step, i) => (
-                        <div key={i} className="flex gap-2 text-xs text-gray-600 pl-1 border-l-2 border-gray-200">
-                            <div className="font-mono text-[10px] text-blue-500 shrink-0 w-16 truncate text-right mr-1">{step.node}</div>
-                            <div>{step.content}</div>
+                        <div key={i} className="flex items-start gap-3 text-xs text-gray-600 pl-1 border-l-2 border-gray-200">
+                            <div className="font-mono text-[11px] font-semibold text-blue-600 shrink-0 w-24 text-right mt-0.5">
+                                {NODE_NAME_MAP[step.node] || step.node}
+                            </div>
+                            <div className="flex-1 leading-relaxed text-gray-700">{step.content}</div>
                         </div>
                     ))}
-                    {!isDone && <div className="pl-4 text-xs text-gray-400 italic">Computing...</div>}
                 </div>
             )}
         </div>

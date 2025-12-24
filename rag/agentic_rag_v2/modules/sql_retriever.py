@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 # Ensure parent directory is in path to import config if needed
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-project_root = os.path.dirname(parent_dir)
+# Go up two more levels: agentic_rag_v2 -> rag -> project_root
+project_root = os.path.dirname(os.path.dirname(parent_dir))
 
 # Try loading .env from project root
 load_dotenv(os.path.join(project_root, ".env"))

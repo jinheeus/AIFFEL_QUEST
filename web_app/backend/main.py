@@ -10,19 +10,33 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
-rag_dir = os.path.join(project_root, "rag/agentic_rag_v2")
-sys.path.append(project_root)  # For config.py
-sys.path.append(rag_dir)  # For graph.py and modules
+sys.path.append(project_root)  # Load project root first to import common.config
+
+# Import Config to get the active RAG version
+from common.config import Config
+
+rag_dir = os.path.join(project_root, "rag", Config.ACTIVE_RAG_DIR)
+print(f"🔹 [Backend] Active RAG Module: {rag_dir}")
+sys.path.append(rag_dir)  # Add dynamic RAG module to path
 
 # Ensure Environment Variables are loaded (if needed)
-from common.config import Config
+# from common.config import Config (Already imported above)
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from graph import app as rag_app  # The compiled LangGraph app
-from modules.drafting_agent import DraftingAgent
+
+# DraftingAgent depends on agentic_rag_v2 modules.
+# If running v1, this might not exist.
+try:
+    from modules.drafting_agent import DraftingAgent
+except ImportError:
+    print(
+        "⚠️ DraftingAgent not found (Likely running V1). Report generation will be disabled."
+    )
+    DraftingAgent = None
 
 app = FastAPI(title="Agentic RAG API")
 
@@ -40,10 +54,15 @@ app.add_middleware(
 async def startup_event():
     print("🔹 [Startup] Warming up VectorRetriever (Loading BM25 Index)...")
     # Initialize singleton to trigger BM25 build/load
-    from modules.vector_retriever import get_retriever
+    try:
+        from modules.vector_retriever import get_retriever
 
-    get_retriever()
-    print("🔹 [Startup] VectorRetriever Ready!")
+        get_retriever()
+        print("🔹 [Startup] VectorRetriever Ready!")
+    except ImportError:
+        print(
+            "⚠️ modules.vector_retriever not found (Likely running V1). Skipping warmup."
+        )
 
 
 class ChatRequest(BaseModel):
@@ -55,25 +74,27 @@ class ChatRequest(BaseModel):
 
 
 NODE_NAMES = {
-    "supervisor": "감사 계획 수립 (Supervisor)",
+    # V2 Nodes (Updated)
+    "router": "질문 의도 분석 및 라우팅",
     "chat_worker": "일상 대화 처리",
-    "analyze_query": "질문 의도 분석",
-    "decompose_query": "복합 질문 분해 및 계획 수립",
-    "retrieve_documents": "규정 및 사례 검색",
-    "grade_documents": "문서 적합성 평가 (Adaptive)",
-    "rewrite_query": "질문 재작성 (Rewrite)",
-    "retrieve_graph_context": "관련 규정 연결 관계 분석",
-    "analyze_stats": "통계 데이터 집계 및 분석",
-    "extract_facts": "핵심 사실관계 추출",
-    "match_regulations": "적용 법령 검토",
-    "evaluate_compliance": "위반 여부 판정",
-    "determine_disposition": "처분 기준 검토",
-    "defense_agent": "소명 논리 시뮬레이션",
-    "prosecution_agent": "감사 취약점 점검",
-    "judge_verdict": "최종 판단 도출",
+    "retrieve_sql": "SQL 기반 메타데이터 검색",
+    "report_manager": "보고서 작성 모드",
+    "field_selector": "검색 필드 선택",
+    "hybrid_retriever": "규정 및 사례 검색 (Hybrid)",
+    "grade_documents": "문서 적합성 평가",
+    "sop_retriever": "업무 편람(SOP) 검색",
+    "rewrite_query": "검색 쿼리 재작성",
     "generate": "답변 생성",
-    "generate_answer": "답변 생성",
-    "reflect_answer": "답변 정합성 검증",
+    "verify_answer": "답변 정합성 검증",
+    "summarize_conversation": "대화 요약",
+    # V1 Nodes
+    "date_extract": "날짜 정보 추출 및 정규화",
+    "field_select": "검색 필드 선택",
+    "field_selector": "검색 필드 선택",
+    "retrieve": "관련 문서 검색",
+    "rerank": "검색 결과 재순위화 (Rerank)",
+    "validate": "검색 결과 검증",
+    "rewrite": "검색 쿼리 재작성",
 }
 
 
@@ -84,13 +105,20 @@ async def event_generator(
     Yields Server-Sent Events (SSE) for the frontend.
     """
     inputs = {
-        "query": query,
         # persona field removed
         # Do NOT initialize documents=[], or it wipes previous state before Router can save it!
         # "documents": [],
         "messages": history,  # Pass history to graph state
         "reflection_count": 0,
     }
+
+    # Input Key Mapping (V1 vs V2)
+    # V2 uses "query", V1 uses "question"
+    if "v1" in Config.ACTIVE_RAG_DIR:
+        inputs["question"] = query
+        inputs["original_question"] = query  # V1 often needs this initialized
+    else:
+        inputs["query"] = query
 
     # Thread Config for Redis Memory
     config = {"configurable": {"thread_id": session_id}}
@@ -163,6 +191,12 @@ async def check_report_readiness_endpoint(request: ChatRequest):
     Checks if there is enough information to generate a report.
     """
     print(f"🔹 [API] Checking Readiness for Session: {request.session_id}")
+    if not DraftingAgent:
+        return {
+            "status": "error",
+            "message": "DraftingAgent not supported in this RAG version.",
+        }
+
     agent = DraftingAgent()
     result = agent.analyze_requirements(request.history)
     return result
@@ -177,6 +211,11 @@ async def generate_report_endpoint(request: ChatRequest):
     print(f"   -> Additional Info: {request.additional_info}")
 
     # 1. Initialize Components
+    if not DraftingAgent:
+        return {
+            "report": "오류: 현재 RAG 버전에서는 보고서 생성 기능을 지원하지 않습니다."
+        }
+
     agent = DraftingAgent()
     from modules.vector_retriever import get_retriever
 

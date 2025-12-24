@@ -7,3 +7,4 @@
 00_data/*
 **/*.pkl
 _trash/*
+**/_deprecated/*

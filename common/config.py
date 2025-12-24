@@ -9,7 +9,7 @@ load_dotenv(os.path.join(project_root, ".env"))
 
 class Config:
     # HyperCLOVA X (Main RAG Agent)
-    CLOVANSTUDIO_API_KEY = os.getenv("CLOVANSTUDIO_API_KEY")
+    CLOVASTUDIO_API_KEY = os.getenv("CLOVASTUDIO_API_KEY")
 
     # RAG Models (HCX)
     HCX_MODEL_LIGHT = os.getenv(
@@ -58,3 +58,6 @@ class Config:
 
     # Feature Flags (Lego Switches)
     ENABLE_REDIS = os.getenv("ENABLE_REDIS", "true").lower() == "true"
+
+    # RAG Versioning
+    ACTIVE_RAG_DIR = os.getenv("ACTIVE_RAG_DIR", "agentic_rag_v2") # or "agentic_rag_v1"

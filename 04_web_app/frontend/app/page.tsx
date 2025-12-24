@@ -386,6 +386,9 @@ export default function Home() {
                                     </button>
                                 </div>
                             </div>
+                            <p className="text-center text-xs text-gray-400 mt-2">
+                                AURA는 실수를 할 수 있으니 다시 한번 확인하세요
+                            </p>
                         </form>
                     </div>
                 </div>

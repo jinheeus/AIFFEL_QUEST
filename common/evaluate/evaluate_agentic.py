@@ -1,6 +1,6 @@
 import pandas as pd
 from langchain_openai import ChatOpenAI  # Keep for type hinting or fallback if needed
-from model_factory import ModelFactory
+from common.model_factory import ModelFactory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from tqdm import tqdm

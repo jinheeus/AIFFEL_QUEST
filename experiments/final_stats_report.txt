@@ -1,4 +1,0 @@
-Runs: 3
-Scores: [np.float64(0.812), np.float64(0.8103999999999999), np.float64(0.8136)]
-Mean: 0.8120
-Std Dev: 0.0013

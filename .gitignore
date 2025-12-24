@@ -6,3 +6,4 @@
 **/__pycache__
 00_data/*
 **/*.pkl
+_trash/*

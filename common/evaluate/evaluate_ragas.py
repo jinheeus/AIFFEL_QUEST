@@ -13,8 +13,8 @@ common_dir = os.path.dirname(current_dir)
 root_dir = os.path.dirname(common_dir)
 sys.path.append(root_dir)
 
-from config import Config
-from model_factory import ModelFactory
+from common.config import Config
+from common.model_factory import ModelFactory
 
 
 def evaluate_metrics(input_path, output_path):

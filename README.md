@@ -101,7 +101,7 @@ cd AURA
 pip install -r requirements.txt
 
 # 3. 프론트엔드 의존성 설치
-cd 04_web_app/frontend
+cd web_app/frontend
 npm install
 cd ../..
 
@@ -120,11 +120,11 @@ cd ../..
 ```
 AURA/
 ├── 00_data/              # 원천 데이터 및 전처리된 PDF
-├── 03_agentic_rag/       # 에이전트 핵심 로직 (LangGraph)
+├── agentic_rag_v2/       # 에이전트 핵심 로직 (LangGraph)
 │   ├── modules/          # 에이전트 도구 (검색기, 생성기, SOP)
 │   ├── graph.py          # 메인 워크플로우 그래프 정의
 │   └── state.py          # 에이전트 상태 스키마 정의
-├── 04_web_app/           # 웹 어플리케이션
+├── web_app/           # 웹 어플리케이션
 │   ├── backend/          # FastAPI 서버
 │   └── frontend/         # Next.js 클라이언트
 ├── experiments/          # 실험용 노트북 및 테스트 스크립트

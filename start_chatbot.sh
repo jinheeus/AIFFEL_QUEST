@@ -14,13 +14,13 @@ echo "🚀 Starting Agentic RAG Chatbot System..."
 # 1. Start Backend
 echo "🔹 [Backend] Starting FastAPI Server on port 8000..."
 export PYTHONUNBUFFERED=1
-nohup python 04_web_app/backend/main.py > backend.log 2>&1 &
+nohup python web_app/backend/main.py > backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   -> Backend running (PID: $BACKEND_PID). Logs at backend.log"
 
 # 2. Start Frontend
 echo "🔹 [Frontend] Starting Next.js App on port 3000..."
-cd 04_web_app/frontend
+cd web_app/frontend
 npm run dev > ../../frontend.log 2>&1 &
 FRONTEND_PID=$!
 echo "   -> Frontend running (PID: $FRONTEND_PID). Logs at frontend.log"

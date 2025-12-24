@@ -10,7 +10,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
-rag_dir = os.path.join(project_root, "agentic_rag_v2")
+rag_dir = os.path.join(project_root, "rag/agentic_rag_v2")
 sys.path.append(project_root)  # For config.py
 sys.path.append(rag_dir)  # For graph.py and modules
 

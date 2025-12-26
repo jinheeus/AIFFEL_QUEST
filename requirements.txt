@@ -12,6 +12,14 @@ pymilvus==2.6.3
 python-dotenv==1.2.1
 neo4j==6.0.3
 sentence-transformers==3.3.1
-opencv-python-headless
+
 langchain-huggingface
-redis>=5.0.0
+redis
+fastapi
+uvicorn
+pydantic
+langchain-milvus
+rank-bm25
+kiwipiepy
+
+

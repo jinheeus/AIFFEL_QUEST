@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import os
-import sys
+import pickle
+import time
 from pymilvus import MilvusClient
 from langchain_milvus import Milvus
 from langchain_naver import ClovaXEmbeddings
@@ -8,13 +9,11 @@ from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 from kiwipiepy import Kiwi
 from sentence_transformers import CrossEncoder
-import pickle
-import time
-
-# Add root for common import if needed
-sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
 from common.config import Config
+from common.logger_config import setup_logger
+
+logger = setup_logger("VECTOR_RETRIEVER")
 
 
 class VectorRetriever:
@@ -28,7 +27,7 @@ class VectorRetriever:
     """
 
     def __init__(self):
-        print("[VectorRetriever] Initializing Hybrid Engine...")
+        logger.info("Initializing Hybrid Engine...")
 
         # 1. 임베딩 모델 초기화 (Initialize Embeddings)
         self.embedding_model = ClovaXEmbeddings(model=Config.EMBEDDING_MODEL)
@@ -53,11 +52,9 @@ class VectorRetriever:
         # 3. 리랭커 초기화 (Reranker)
         try:
             self.reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
-            print("   [Retriever] Reranker Loaded: BAAI/bge-reranker-v2-m3")
-        except:
-            print(
-                "   [Retriever] Warning: Failed to load BGE-M3, falling back to MiniLM"
-            )
+            logger.info("Reranker Loaded: BAAI/bge-reranker-v2-m3")
+        except Exception as e:
+            logger.warning(f"Failed to load BGE-M3 ({e}), falling back to MiniLM")
             self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
         # 4. BM25 인덱스 구축 (Build BM25 Index)
@@ -68,7 +65,7 @@ class VectorRetriever:
         """
         BM25 인덱싱을 위해 Milvus에서 모든 문서를 가져옵니다.
         """
-        print(f"   [Retriever] Loading corpus from Milvus: {self.collection_name}...")
+        logger.info(f"Loading corpus from Milvus: {self.collection_name}...")
         all_docs = []
         limit = 200  # Safe batch size for scalar fields
         offset = 0
@@ -103,14 +100,14 @@ class VectorRetriever:
                 offset += len(res)
                 if len(res) < limit:
                     break
-            print(f"   [Retriever] Loaded {len(all_docs)} total documents.")
+            logger.info(f"Loaded {len(all_docs)} total documents.")
             return all_docs
         except Exception as e:
-            print(f"   [Retriever] ❌ Failed to load corpus: {e}")
+            logger.error(f"❌ Failed to load corpus: {e}")
             return []
 
     def _build_bm25_index(self):
-        print("   [Retriever] Building BM25 Index...")
+        logger.info("Building BM25 Index...")
         self.tokenizer = Kiwi()
 
         # Cache Path
@@ -121,7 +118,7 @@ class VectorRetriever:
         # 1. Try Loading from Cache
         if os.path.exists(cache_path):
             try:
-                print(f"   [Retriever] Found BM25 cache at {cache_path}. Loading...")
+                logger.info(f"Found BM25 cache at {cache_path}. Loading...")
                 start_time = time.time()
                 with open(cache_path, "rb") as f:
                     cache_data = pickle.load(f)
@@ -129,12 +126,10 @@ class VectorRetriever:
                     self.bm25_corpus = cache_data["bm25_corpus"]
                     self.bm25_docs = cache_data["bm25_docs"]
                     self.id_to_doc = cache_data["id_to_doc"]
-                print(
-                    f"   [Retriever] ✅ BM25 Cache Loaded in {time.time() - start_time:.2f}s."
-                )
+                logger.info(f"✅ BM25 Cache Loaded in {time.time() - start_time:.2f}s.")
                 return
             except Exception as e:
-                print(f"   [Retriever] ⚠️ Cache load failed ({e}). Rebuilding...")
+                logger.warning(f"Cache load failed ({e}). Rebuilding...")
 
         # 2. Rebuild Index (If cache missing or failed)
         raw_docs = self._load_documents_from_milvus()
@@ -154,7 +149,7 @@ class VectorRetriever:
             doc_id = d.get("id", "unknown")
 
             if doc_id == "unknown" and len(self.bm25_corpus) < 3:
-                print(f"   [Retriever] ⚠️ Warning: ID missing for doc. Keys: {d.keys()}")
+                logger.warning(f"ID missing for doc. Keys: {d.keys()}")
 
             # Tokenize
             tokens = [t.form for t in self.tokenizer.tokenize(text)]
@@ -184,11 +179,11 @@ class VectorRetriever:
                     },
                     f,
                 )
-            print(f"   [Retriever] ✅ BM25 Index Saved to {cache_path}")
+            logger.info(f"✅ BM25 Index Saved to {cache_path}")
         except Exception as e:
-            print(f"   [Retriever] ⚠️ Failed to save cache: {e}")
+            logger.warning(f"Failed to save cache: {e}")
 
-        print(f"   [Retriever] ✅ BM25 Index Ready with {len(self.bm25_corpus)} docs.")
+        logger.info(f"✅ BM25 Index Ready with {len(self.bm25_corpus)} docs.")
 
     def search_and_merge(
         self,
@@ -204,9 +199,9 @@ class VectorRetriever:
         # 필터에 'k'가 있으면 top_k 재정의 (Override top_k)
         if "k" in filters:
             top_k = int(filters["k"])
-            print(f"   [Hybrid] Override Top-K: {top_k}")
+            logger.info(f"Override Top-K: {top_k}")
 
-        print(f"   [Hybrid] Searching for: '{query}'")
+        logger.info(f"Hybrid Searching for: '{query}'")
 
         # --- 1. Dense Retrieval (밀집 검색) ---
         # 참고: 단순화를 위해 'expr' 필터는 완벽히 구현되지 않았습니다.
@@ -276,8 +271,8 @@ class VectorRetriever:
             # "최신 사례"는 내용 연관성이 낮더라도 사용자의 시의성(Recency) 의도가 중요하기 때문입니다.
             min_score = 0.35
             if filters and filters.get("sort") == "date_desc":
-                print(
-                    "   [Hybrid] Sort='date_desc' detected. Lowering threshold to 0.1 to capture recent docs."
+                logger.info(
+                    "Sort='date_desc' detected. Lowering threshold to 0.1 to capture recent docs."
                 )
                 min_score = 0.1
 
@@ -293,18 +288,18 @@ class VectorRetriever:
             # [Threshold Filtering]
             # 관련성 낮은 문서(Noise)를 필터링하여 LLM 혼란을 방지합니다.
             # BGE-M3 점수가 0-1 사이일 때, 0.35는 "관련 있음"을 판단하는 보수적인 기준입니다.
-            scored = [s for s in scored if s[1] >= 0.35]
+            scored = [s for s in scored if s[1] >= min_score]
 
             final_docs = [doc for doc, score in scored]
 
             if scored:
-                print(f"   [Reranker] Top Score: {scored[0][1]:.4f}")
+                logger.info(f"Top Rerank Score: {scored[0][1]:.4f}")
                 # [DEBUG] Log actual retrieved titles
                 for i, (d, s) in enumerate(scored[:5]):  # show top 5 logic
                     title = d.metadata.get("title", "No Title")
-                    print(f"   -> [Doc {i + 1}] Score: {s:.4f} | Title: {title}")
+                    logger.debug(f"-> [Doc {i + 1}] Score: {s:.4f} | Title: {title}")
             else:
-                print("   [Reranker] All candidates filtered by threshold (0.35)")
+                logger.info(f"All candidates filtered by threshold ({min_score})")
         else:
             final_docs = candidates
 
@@ -315,7 +310,7 @@ class VectorRetriever:
         # 정렬 후 최종 자르기 (Final Truncation)
         final_docs = final_docs[:top_k]
 
-        print(f"   [Hybrid] Retrieved {len(final_docs)} final contexts.")
+        logger.info(f"Retrieved {len(final_docs)} final contexts.")
         return final_docs
 
     def _hydrate_missing_titles(self, docs: List[Document]) -> List[Document]:
@@ -355,7 +350,7 @@ class VectorRetriever:
         지원: 'date_desc' (최신순)
         """
         if sort_mode == "date_desc":
-            print("   [Hybrid] Sorting by Date (Latest)...")
+            logger.info("Sorting by Date (Latest)...")
             try:
                 from datetime import datetime
 
@@ -373,7 +368,7 @@ class VectorRetriever:
                 # 정렬: 최신 날짜 우선 (Latest date first)
                 docs.sort(key=parse_date, reverse=True)
             except Exception as e:
-                print(f"   [Hybrid] ⚠️ Date sort failed: {e}")
+                logger.warning(f"Date sort failed: {e}")
 
         return docs
 

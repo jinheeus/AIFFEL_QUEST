@@ -1,11 +1,13 @@
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from pydantic import BaseModel, Field
+
 from state import AgentState
 from common.config import Config
 from common.model_factory import ModelFactory
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+from common.logger_config import setup_logger
 
 # --- 모듈형 RAG 컴포넌트 임포트 ---
 from modules.generator import generate_answer
@@ -20,13 +22,7 @@ from modules.sql_retriever import SQLRetriever
 # Fallback / Simple Chat
 from modules.chat_worker import chat_worker
 
-# --- 체크포인터 (Checkpointer) ---
-from langgraph.checkpoint.memory import MemorySaver
-
-# --- Router Logic ---
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from pydantic import BaseModel, Field
+logger = setup_logger("GRAPH")
 
 
 class RouterOutput(BaseModel):
@@ -41,7 +37,7 @@ def node_router(state: AgentState):
     사용자의 의도를 'chat', 'fast' (Fast Track), 'deep' (Deep RAG) 중 하나로 분류합니다.
     또한, 새로운 주제(Context)인지 판단하여 이전 맥락을 유지하거나 초기화합니다.
     """
-    print("--- [Router] Routing ---")
+    logger.info("--- [Router] Routing ---")
     query = state.get("query", "")
 
     # [컨텍스트 유지 로직]
@@ -49,14 +45,14 @@ def node_router(state: AgentState):
     prev_docs = state.get("documents", [])
 
     # 디버그: 이전 턴에서 받은 문서 개수 확인
-    print(f" -> [Router Debug] Prev Docs Count: {len(prev_docs)}")
+    logger.debug(f" -> [Router Debug] Prev Docs Count: {len(prev_docs)}")
 
     persist_docs = state.get("persist_documents", [])
     if prev_docs and "검색 결과가 없습니다" not in str(prev_docs[0]):
         persist_docs = prev_docs
-        print(f" -> [Router Debug] Persisting {len(persist_docs)} documents.")
+        logger.debug(f" -> [Router Debug] Persisting {len(persist_docs)} documents.")
     else:
-        print(
+        logger.debug(
             f" -> [Router Debug] Keeping existing {len(persist_docs)} persisted docs."
         )
 
@@ -77,7 +73,7 @@ def node_router(state: AgentState):
     # 1. Quick Keyword Check (Optimization)
     greetings = ["안녕", "반가워", "누구니", "hello", "hi", "하이", "ㅎㅇ"]
     if any(query.strip().startswith(x) for x in greetings) and len(query) < 10:
-        print(" -> [Router] Keyword Hit: Chat")
+        logger.info(" -> [Router] Keyword Hit: Chat")
         return {"mode": "chat", "category": "chat"}
 
     # Intent Classification
@@ -174,7 +170,7 @@ def node_router(state: AgentState):
         if category == "report":
             has_context = len(persist_docs) > 0 or len(state["messages"]) > 2
             if not has_context:
-                print(
+                logger.info(
                     " -> [Router] Report intent detected but NO Context. Fallback to 'deep' search."
                 )
                 category = "deep"  # Fallback to search
@@ -212,7 +208,7 @@ def node_router(state: AgentState):
         else:
             mode = "deep"
 
-        print(
+        logger.info(
             f" -> [Router] LLM Decided: {mode.upper()} | New Topic: {is_new_topic} (Raw: {result_text})"
         )
 
@@ -223,14 +219,14 @@ def node_router(state: AgentState):
         if not is_new_topic:
             final_persist_docs = persist_docs
             if final_persist_docs:
-                print(
+                logger.info(
                     f" -> [Router] Persistence: KEEPING {len(final_persist_docs)} docs (Follow-up)"
                 )
             else:
-                print(" -> [Router] Persistence: None available to keep.")
+                logger.info(" -> [Router] Persistence: None available to keep.")
         else:
             final_persist_docs = []
-            print(" -> [Router] Persistence: CLEARED (New Topic)")
+            logger.info(" -> [Router] Persistence: CLEARED (New Topic)")
 
         # Explicitly return cleared state to ensure updates propagate in LangGraph
         return {
@@ -253,7 +249,7 @@ def node_router(state: AgentState):
         }
 
     except Exception as e:
-        print(f" -> [Router] Error ({e}), Defaulting to Deep RAG")
+        logger.error(f" -> [Router] Error ({e}), Defaulting to Deep RAG")
         return {
             "mode": "deep",
             "category": "deep",
@@ -299,7 +295,7 @@ def route_post_retrieval(state: AgentState):
     """
     mode = state.get("mode", "deep")
     if mode == "fast":
-        print(" -> [Fast Track] Skipping Grading/SOP. Proceeding to Generation.")
+        logger.info(" -> [Fast Track] Skipping Grading/SOP. Proceeding to Generation.")
         return "generate"
     else:
         return "grade_documents"
@@ -312,7 +308,7 @@ def route_post_generation(state: AgentState):
     """
     mode = state.get("mode", "deep")
     if mode == "fast":
-        print(" -> [Fast Track] Skipping Verification. Proceeding to Summary.")
+        logger.info(" -> [Fast Track] Skipping Verification. Proceeding to Summary.")
         return "summarize_conversation"
     else:
         return "verify_answer"
@@ -327,10 +323,10 @@ def route_retrieval(state: AgentState):
 
     if is_success == "yes" or retry_count >= 3:
         if retry_count >= 3:
-            print(" -> [Stop] Max retries reached. Proceeding to SOP Retrieval.")
+            logger.info(" -> [Stop] Max retries reached. Proceeding to SOP Retrieval.")
         return "sop_retriever"
     else:
-        print(" -> [Loop] Retrieval Bad. Rewriting Query.")
+        logger.info(" -> [Loop] Retrieval Bad. Rewriting Query.")
         return "rewrite_query"
 
 
@@ -342,24 +338,24 @@ def route_verification(state: AgentState):
     # 무한 루프 방지
     reflection_count = state.get("reflection_count", 0)
     if reflection_count >= 3:
-        print(" -> [Stop] Max reflection/regeneration reached. Ending.")
+        logger.info(" -> [Stop] Max reflection/regeneration reached. Ending.")
         return END
 
     # 1. Check Hallucination
     hallucinated = state.get("is_hallucinated", "no")  # 'yes' means hallucinated (bad)
 
     if hallucinated == "yes":
-        print(" -> [Loop] Hallucination detected. Regenerating...")
+        logger.info(" -> [Loop] Hallucination detected. Regenerating...")
         return "generate"  # Simple retry (could add instructions)
 
     # 2. Check Answer Utility
     useful = state.get("is_useful", "yes")
 
     if useful == "yes":
-        print(" -> [End] Answer is useful.")
+        logger.info(" -> [End] Answer is useful.")
         return END
     else:
-        print(" -> [Loop] Answer not useful. Rewriting Query.")
+        logger.info(" -> [Loop] Answer not useful. Rewriting Query.")
         return "rewrite_query"
 
 
@@ -429,19 +425,13 @@ def node_consistency_check(state: AgentState):
         "reflection_count": cur_count + 1,
     }
 
-    return {
-        "is_hallucinated": is_hallucinated,
-        "is_useful": is_useful,
-        "reflection_count": cur_count + 1,
-    }
-
 
 def node_retrieve_sql(state: AgentState):
     """
     [Node] SQL 기반 메타데이터 검색 (Fast Track)
     사용자의 질문을 SQL로 변환하여 DB에서 직접 검색합니다.
     """
-    print("--- [Node] SQL Retrieve ---")
+    logger.info("--- [Node] SQL Retrieve ---")
     query = state["query"]
 
     # Get Context (from previous turn)
@@ -463,7 +453,7 @@ def node_report_manager(state: AgentState):
     [Node] 보고서 작성 관리자 (Report Manager)
     사용자의 보고서 작성 요청을 처리하고, 누락된 정보를 확인하거나 Frontend에 작성 모드 진입 명령을 보냅니다.
     """
-    print("--- [Node] Report Manager ---")
+    logger.info("--- [Node] Report Manager ---")
     from modules.drafting_agent import DraftingAgent
 
     agent = DraftingAgent()
@@ -474,7 +464,7 @@ def node_report_manager(state: AgentState):
 
     if status == "ready":
         # Report Ready -> Trigger Frontend
-        print(" -> [Report Manager] Ready. Triggering Frontend.")
+        logger.info(" -> [Report Manager] Ready. Triggering Frontend.")
         return {
             "answer": "보고서 작성을 위한 정보가 충분합니다. 작성을 시작합니다...",
             "command": "open_report",  # Signal to Frontend
@@ -482,7 +472,7 @@ def node_report_manager(state: AgentState):
     else:
         # Missing Info -> Ask User
         missing = result.get("missing_fields", [])
-        print(f" -> [Report Manager] Missing: {missing}")
+        logger.info(f" -> [Report Manager] Missing: {missing}")
 
         # Simple Logic: Formulate a question using LLM or Rule-based
         # For now, rule-based approach for speed/reliability
@@ -591,9 +581,9 @@ if Config.ENABLE_REDIS:
         redis_client = Redis(host="localhost", port=6379, db=0)
         redis_client.ping()
         checkpointer = RedisSaver(redis_client)
-        print("✅ Redis Memory Enabled")
+        logger.info("✅ Redis Memory Enabled")
     except Exception as e:
-        print(f"⚠️ Redis unavailable ({e}). Fallback to In-Memory.")
+        logger.warning(f"⚠️ Redis unavailable ({e}). Fallback to In-Memory.")
         checkpointer = MemorySaver()
 else:
     checkpointer = MemorySaver()

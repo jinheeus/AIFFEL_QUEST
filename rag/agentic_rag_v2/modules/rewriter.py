@@ -1,6 +1,10 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
+from common.logger_config import setup_logger
+
+logger = setup_logger("REWRITER")
+
 # Import ModelFactory (relative import fallback)
 try:
     from common.model_factory import ModelFactory
@@ -57,9 +61,9 @@ def rewrite_query(question: str) -> str:
     """
     Rewrites the question to improve retrieval.
     """
-    print(f"--- [Modular RAG] Rewriting Query: '{question}' ---")
+    logger.info(f"--- [Modular RAG] Rewriting Query: '{question}' ---")
 
     better_query = rewriter_chain.invoke({"question": question})
-    print(f" -> Optimized Query: '{better_query}'")
+    logger.info(f" -> Optimized Query: '{better_query}'")
 
     return better_query

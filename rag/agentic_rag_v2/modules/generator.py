@@ -1,9 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_naver import ChatClovaX
-from common.config import Config
-from state import AgentState
+
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+from state import AgentState
+
+logger = setup_logger("GENERATOR")
 
 # 답변 생성용 모델 (Analyst Persona -> Deep Reasoning Model)
 generator_llm = ModelFactory.get_rag_model(level="reasoning", temperature=0.1)
@@ -14,7 +16,7 @@ def generate_answer(state: AgentState) -> AgentState:
     [Node] 검색된 문서 또는 통계 결과를 바탕으로 최종 답변을 생성합니다.
     페르소나에 따라 적절한 프롬프트를 사용하여 응답을 구성합니다.
     """
-    print(f"\n[Node] generate_answer: 답변 생성 중...")
+    logger.info("generate_answer: 답변 생성 중...")
     # 0. Reflection Count 증가
     current_count = state.get("reflection_count", 0)
     state["reflection_count"] = current_count + 1
@@ -52,7 +54,7 @@ def generate_answer(state: AgentState) -> AgentState:
     # 피드백이 있으면 시스템 프롬프트에 추가
     feedback = state.get("feedback", "")
     if feedback and feedback.startswith("FAIL:"):
-        print(f" -> 피드백 반영하여 재생성 중: {feedback}")
+        logger.info(f" -> 피드백 반영하여 재생성 중: {feedback}")
         system_msg += f"\n\n[이전 답변에 대한 피드백]\n{feedback}\n이 피드백을 반영하여 답변을 수정하세요."
 
     # 컨텍스트 형식화 (Context Format)
@@ -111,7 +113,7 @@ def generate_answer(state: AgentState) -> AgentState:
     # [이전 컨텍스트 유지 (Previous Context Persistence)]
     # 이전 턴에서 검색되었던 문서들을 제공하여 "아까 그 문서", "2번 문서" 등의 참조를 해결합니다.
     persist_docs = state.get("persist_documents", [])
-    print(f" -> [Generator Debug] Persisted Docs Available: {len(persist_docs)}")
+    logger.debug(f" -> [Generator Debug] Persisted Docs Available: {len(persist_docs)}")
 
     if persist_docs:
         p_docs_text = []

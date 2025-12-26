@@ -1,34 +1,38 @@
 import sqlite3
-import re  # noqa: F401 (Imported but unused, keeping just in case for future regex needs, or remove if strictly cleaning)
-import sys
 import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from dotenv import load_dotenv
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from dotenv import load_dotenv
-
-# Ensure parent directory is in path to import config if needed
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-# Go up two more levels: agentic_rag_v2 -> rag -> project_root
-project_root = os.path.dirname(os.path.dirname(parent_dir))
-
-# Try loading .env from project root
-load_dotenv(os.path.join(project_root, ".env"))
-
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
 from langchain_naver import ChatClovaX
+
 from common.config import Config
+from common.logger_config import setup_logger
+
+# Get project root for db path resolution
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# agentic_rag_v2 -> rag -> project_root
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+
+# Load .env (Though usually loaded by main, keeping it for standalone safety if needed, but cleaner)
+# Assuming project root is correctly set in environment or running from root
+load_dotenv()
+
+logger = setup_logger("SQL_RETRIEVER")
 
 
 class SQLRetriever:
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
             # Default to common/audit_metadata.db
+            # Try to resolve relative to project root if possible, or relative to this file
+            # If running from root, 'common/audit_metadata.db' might work, but let's be safe.
+            # Re-calculating project root robustly:
+            # If we are in /.../rag/agentic_rag_v2/modules/sql_retriever.py
+            # Root is 3 levels up from 'modules'
             self.db_path = os.path.join(project_root, "common", "audit_metadata.db")
         else:
             self.db_path = db_path
@@ -37,11 +41,12 @@ class SQLRetriever:
         if not os.getenv("CLOVASTUDIO_API_KEY") and not os.getenv(
             "NCP_CLOVASTUDIO_API_KEY"
         ):
-            print("❌ Error: CLOVASTUDIO_API_KEY not found in environment.")
-            print(f"Current Keys: {[k for k in os.environ.keys() if 'CLOVA' in k]}")
+            logger.error("❌ Error: CLOVASTUDIO_API_KEY not found in environment.")
+            # Masking keys for log safety
+            keys = [k for k in os.environ.keys() if "CLOVA" in k]
+            logger.info(f"Current CLOVA related env vars: {keys}")
 
         # ChatClovaX 초기화
-        # temperature=0이 가끔 튀는 경우가 있어 작은 float 값을 사용합니다.
         self.llm = ChatClovaX(model=Config.LLM_MODEL, temperature=0.05, max_tokens=2048)
 
         # LLM이 이해하기 위한 스키마 정보 (Schema for LLM)
@@ -116,7 +121,7 @@ SQL Query:
             conn.close()
             return [dict(row) for row in rows]
         except Exception as e:
-            print(f"Error executing SQL: {e}")
+            logger.error(f"Error executing SQL: {e}")
             return []
 
     def _clean_sql(self, sql: str) -> str:
@@ -129,11 +134,8 @@ SQL Query:
     ) -> List[Document]:
         """
         자연어 질문(NL)을 SQL로 변환하여 실행하고, 결과를 Document 리스트로 반환합니다.
-        Args:
-            query: 사용자의 자연어 질문
-            context: 이전 문서 리스트 ('그거', '#2' 등의 참조 해결용)
         """
-        print(f"   [SQL Retriever] 처리 중: {query}")
+        logger.info(f"Processing Query: {query}")
 
         # 컨텍스트 포맷팅 (Format Context)
         context_str = "No context available."
@@ -144,7 +146,7 @@ SQL Query:
                 title = doc.metadata.get("title", "Unknown")
                 formatted.append(f"Item #{i}: IDX={idx}, Title={title}")
             context_str = "\\n".join(formatted)
-            print(f"   [SQL Retriever] 컨텍스트 제공됨 ({len(context)} docs)")
+            logger.info(f"Context Provided ({len(context)} docs)")
 
         # 1. SQL 생성 (Generate SQL)
         current_date = datetime.now().strftime("%Y-%m-%d")
@@ -157,11 +159,11 @@ SQL Query:
             }
         )
         cleaned_sql = self._clean_sql(generated_sql)
-        print(f"   [SQL Retriever] 생성된 SQL: {cleaned_sql}")
+        logger.info(f"Generated SQL: {cleaned_sql}")
 
         # 2. SQL 실행 (Execute SQL)
         results = self._execute_query(cleaned_sql)
-        print(f"   [SQL Retriever] 검색 결과: {len(results)}건 발견.")
+        logger.info(f"Found {len(results)} results")
 
         # 3. 문서 변환 (Convert to Documents)
         documents = []
@@ -186,4 +188,4 @@ if __name__ == "__main__":
         for doc in docs:
             print(f"[{doc.metadata.get('date')}] {doc.metadata.get('title')}")
     except Exception as e:
-        print(f"Test Failed: {e}")
+        logger.error(f"Test Failed: {e}")

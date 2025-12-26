@@ -1,10 +1,12 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
-from typing import List, Literal
+from typing import List
 
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+
+logger = setup_logger("GRADER")
 
 
 # --- LLM 초기화 ---
@@ -47,7 +49,7 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
     """
     검색된 문서들의 관련성(Relevance)을 평가합니다.
     """
-    print("--- [Modular RAG] Grading Documents ---")
+    logger.info("--- [Modular RAG] Grading Documents ---")
 
     filtered_docs = []
     relevant_found = False
@@ -72,11 +74,11 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
         grade = score.binary_score
 
         if grade == "yes":
-            print(f" -> Document Relevant: {doc_id}")
+            logger.info(f" -> Document Relevant: {doc_id}")
             filtered_docs.append(d)
             relevant_found = True
         else:
-            print(f" -> Document Irrelevant: {doc_id}")
+            logger.info(f" -> Document Irrelevant: {doc_id}")
 
     return {
         "documents": filtered_docs,
@@ -120,7 +122,7 @@ def grade_hallucination(generation: str, documents: List[Document]) -> str:
     """
     생성된 답변이 문서에 근거(Grounded)하고 있는지 확인합니다.
     """
-    print("--- [Modular RAG] Grading Hallucination ---")
+    logger.info("--- [Modular RAG] Grading Hallucination ---")
 
     # Context format
     # Handle both string and Document objects
@@ -171,7 +173,7 @@ def grade_answer(question: str, generation: str) -> str:
     """
     답변이 사용자에게 유용한지(Helpfulness) 확인합니다.
     """
-    print("--- [Modular RAG] Grading Answer Utility ---")
+    logger.info("--- [Modular RAG] Grading Answer Utility ---")
 
     score = answer_grader_chain.invoke({"question": question, "generation": generation})
     return score.binary_score

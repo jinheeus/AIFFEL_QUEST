@@ -59,12 +59,12 @@ graph TD
 
 | 구분 | 기술 도구 |
 | --- | --- |
-| **LLM** | HyperCLOVA X (HCX-003, Dash), OpenAI GPT-4o, Gemini 1.5 Pro |
+| **LLM** | HyperCLOVA X (Dash, HCX-003, HCX-007) |
 | **Orchestration** | LangChain, LangGraph |
 | **Backend** | FastAPI, Python 3.10+ |
 | **Frontend** | Next.js 14, React, TailwindCSS |
 | **Database** | Milvus (Vector), SQLite (Meta), Redis (Memory) |
-| **Preprocessing** | Docling (PDF Parsing) |
+
 
 ---
 
@@ -77,8 +77,8 @@ graph TD
 | **감사 분석관 (Analyst)** | **HCX-007 (Reasoning)** | 사실 관계의 모순을 탐지하고 규정 위반을 판단하는 고도의 **추론 능력**이 필수적입니다. |
 | **보고서 작성기 (Writer)** | **HCX-003 (Standard)** | 정해진 양식에 따른 문서 작성 및 **지시 이행** 능력이 우수하며, 자가 교정 로직으로 정확도를 보완합니다. |
 | **지휘관 (Router)** | **HCX-003 (Standard)** | 사용자 의도를 파악하여 신속하게 분기 처리를 수행하는 밸런스 모델이 적합합니다. |
-| **필드 추출기 (Field Selector)** | **GPT-4o-mini (Light)** | 복잡한 **JSON 스키마**를 엄격하게 준수하는 구조적 출력 안정성을 고려했습니다. |
-| **데이터 검색기 (Retriever)** | **HCX-DASH (Light)** | 단순 데이터 조회 및 SQL 변환 업무를 빠르게 처리하여 시스템 **응답 속도**를 최적화합니다. |
+| **필드 추출기 (Field Selector)** | **HCX-003 (Standard)** | 복잡한 **JSON 스키마**를 엄격하게 준수하는 구조적 출력 안정성을 고려했습니다. |
+| **데이터 검색기 (Retriever)** | **HCX-DASH-002 (Light)** | 단순 데이터 조회 및 SQL 변환 업무를 빠르게 처리하여 시스템 **응답 속도**를 최적화합니다. |
 
 ---
 
@@ -119,12 +119,16 @@ cd ../..
 
 ```
 AURA/
-├── 00_data/              # 원천 데이터 및 전처리된 PDF
-├── agentic_rag_v2/       # 에이전트 핵심 로직 (LangGraph)
-│   ├── modules/          # 에이전트 도구 (검색기, 생성기, SOP)
-│   ├── graph.py          # 메인 워크플로우 그래프 정의
-│   └── state.py          # 에이전트 상태 스키마 정의
-├── web_app/           # 웹 어플리케이션
+├── common/               # 공통 유틸리티 및 모델 팩토리
+├── rag/                  # RAG 파이프라인 모음
+│   ├── advanced_rag/     # 어드밴스드 RAG
+│   ├── agentic_rag_v1/   # 에이전트 RAG (요약 데이터, V1)
+│   ├── agentic_rag_v2/   # 에이전트 RAG (요약 데이터 + 원본 데이터, V2)
+│   │   ├── modules/      # 에이전트 도구 (검색기, 생성기, SOP)
+│   │   ├── graph.py      # 메인 워크플로우 그래프 정의
+│   │   └── state.py      # 에이전트 상태 스키마 정의
+│   └── naive_rag/        # 기본 RAG 베이스라인
+├── web_app/              # 웹 어플리케이션
 │   ├── backend/          # FastAPI 서버
 │   └── frontend/         # Next.js 클라이언트
 ├── experiments/          # 실험용 노트북 및 테스트 스크립트

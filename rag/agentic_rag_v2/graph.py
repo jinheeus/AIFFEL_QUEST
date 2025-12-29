@@ -84,35 +84,35 @@ def node_router(state: AgentState):
         # [Fix] Abandon JSON Parser for Router because HCX is unstable with JSON.
         # Use String Result and parse it manually.
 
-        system_prompt = """You are an intent classifier for an Audit RAG system.
-        
-        Classify the query into one of four categories:
-        1. 'chat': Casual conversation, greetings, self-introduction, or non-audit questions.
-        2. 'fast': Simple information retrieval, fact lookup, list requests.
-           - Examples: "근무태만 사례 3개만 찾아줘" (Specific count/entity), "latest 2 cases", "Gas Corp 3 cases".
-           - Use 'fast' when the user asks for specific entities or counts.
-        3. 'deep': Complex analysis, comparison, cause-effect analysis, or searching for information *to be used in* a report.
-           - Examples: "보고서 써야 하니까 횡령 관련 자료 다 가져와봐" (Research phase), "Compare these two cases", "Analyze the root cause".
-        4. 'report': User explicitly asks to *WRITE*, *DRAFT*, or *GENERATE* the actual audit report document NOW.
-           - Examples: "방금 찾은 2번 사례로 보고서 초안 작성해줘", "내용은 충분한 것 같아. 이제 보고서 뽑아줘", "Open report mode".
-           - **Explicit Info Provision**: If the user provides specific details (Date, Amount, Content) and asks to write the report, OR just provides the facts to fill in the missing info, this is 'report'. 
-             - e.g., "Here is the info: 2025, 200m won. Write the report." -> 'report'.
-             - e.g., "Agency is KOGAS, Period is 2025." (Answering bot's question) -> 'report' | False (Keep context).
-           - CRITICAL distinction: "I need to write a report, so find X" -> This is 'deep' (Search), NOT 'report'.
+        system_prompt = """당신은 감사 RAG 시스템의 의도 분류기(Intent Classifier)입니다.
 
-        [Pivot Detection]
-        Determine if the user is pivoting to a completely NEW topic (New Entity, New Company, New Search) or asking a FOLLOW-UP question about the previous context.
-        - "Gas Corp 3 cases" -> New Topic: TRUE
-        - "Tell me more about the first one" -> New Topic: FALSE
-        - "Summarize that" -> New Topic: FALSE
-        - "Draft a report for this" -> New Topic: FALSE (Usually uses existing context)
+        사용자의 질문을 다음 4가지 카테고리 중 하나로 분류하십시오:
+        1. 'chat': 일상 대화, 인사, 자기소개 또는 감사와 무관한 질문.
+        2. 'fast': 단순 정보 검색, 사실 조회, 리스트 요청.
+           - 예시: "근무태만 사례 3개만 찾아줘", "가스공사 사례 3개", "최신 2건".
+           - 사용자가 구체적인 개체나 숫자를 요구할 때 사용합니다.
+        3. 'deep': 복잡한 분석, 비교, 인과관계 분석 또는 보고서 작성을 위한 정보 탐색, **조언 요청**.
+           - 예시: "보고서 써야 하니까 횡령 관련 자료 다 가져와봐", "이 두 사례 비교해줘", "원인 분석해줘".
+           - **주의**: "보고서에 뭘 넣어야 할까?", "보고서 작성 시 유의할 점 알려줘" 등의 조언 요청은 'deep'입니다.
+           - "보고서를 써야 하니까 X를 찾아줘"는 'report'가 아니라 'deep'(검색)입니다.
+        4. 'report': 사용자가 지금 즉시 실제 감사 보고서를 **작성**, **초안 생성**하라고 명시적으로 요청함.
+           - 예시: "방금 찾은 2번 사례로 보고서 초안 작성해줘", "내용은 충분한 것 같아. 이제 보고서 뽑아줘".
+           - **명시적 정보 제공**: 사용자가 구체적인 세부 정보(일자, 금액, 내용)를 제공하고 작성을 요청하거나, 봇의 질문에 답하여 정보를 채워주는 경우.
+           - **주의**: "보고서 쓰려면 뭐가 필요해?", "어떤 정보를 줘야 해?" 같은 *준비 질문*은 'report'가 아닙니다. ('chat' 또는 'deep'으로 분류)
 
-        [Output Format]
-        Return a single line with: Category | NewTopic(True/False)
-        Example 1: fast | True
-        Example 2: fast | False
-        Example 3: chat | True
-        Example 4: report | False
+        [주제 전환 판단 (Pivot Detection)]
+        사용자가 완전히 새로운 주제(새로운 개체, 새로운 회사, 새로운 검색)로 전환하는지, 아니면 이전 맥락에 대한 후속 질문을 하는지 판단하십시오.
+        - "가스공사 사례 3개" -> 새로운 주제: True
+        - "첫 번째 사례에 대해 더 말해줘" -> 새로운 주제: False
+        - "그거 요약해줘" -> 새로운 주제: False
+        - "이걸로 보고서 써줘" -> 새로운 주제: False (기존 맥락 사용)
+
+        [출력 형식]
+        다음 형식의 한 줄로 반환하십시오: Category | NewTopic(True/False)
+        예시 1: fast | True
+        예시 2: fast | False
+        예시 3: deep | False
+        예시 4: report | False
         """
 
         prompt = ChatPromptTemplate.from_messages(

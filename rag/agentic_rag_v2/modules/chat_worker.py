@@ -3,10 +3,13 @@ from langchain_core.output_parsers import StrOutputParser
 
 from common.model_factory import ModelFactory
 from state import AgentState
+from common.logger_config import setup_logger
+
+logger = setup_logger("CHAT_WORKER")
 
 
 def chat_worker(state: AgentState):
-    print("--- [ChatWorker] Handling Chit-Chat ---")
+    logger.info("--- [ChatWorker] Handling Chit-Chat ---")
     query = state["query"]
 
     # 단순 대화 프롬프트 정의 (Simple Chat Prompt)
@@ -51,5 +54,5 @@ def chat_worker(state: AgentState):
         response = chain.invoke({"query": query})
         return {"answer": response}
     except Exception as e:
-        print(f"[ChatWorker] 오류 발생: {e}")
+        logger.error(f"[ChatWorker] 오류 발생: {e}")
         return {"answer": "죄송합니다. 일시적인 오류가 발생했습니다."}

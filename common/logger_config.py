@@ -10,11 +10,11 @@ def setup_logger(name: str = "AURA_LOG") -> logging.Logger:
 
     # helper to avoid adding multiple handlers if logger is reused
     if not logger.handlers:
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)
 
         # Create console handler
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.INFO)
+        handler.setLevel(logging.DEBUG)
 
         # Create formatter
         # Format: Time | Level | Component | Message

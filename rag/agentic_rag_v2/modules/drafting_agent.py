@@ -3,6 +3,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+
+logger = setup_logger("DRAFTING_AGENT")
 
 
 class DraftingAgent:
@@ -20,7 +23,7 @@ class DraftingAgent:
         """
         Analyzes conversation history to check for missing report requirements.
         """
-        print("--- [DraftingAgent] Analyzing Requirements ---")
+        logger.info("--- [DraftingAgent] Analyzing Requirements ---")
 
         # Format history
         formatted_history = ""
@@ -29,32 +32,31 @@ class DraftingAgent:
             formatted_history += f"[{role}]: {msg['content']}\n\n"
 
         system_prompt = """
-        You are a Report Requirements Analyst.
-        Check if the conversation contains essential information for an Audit Report.
-        
-        [CRITICAL UPDATE]
-        - **Do NOT be strict.** If the user wants to generate a report, let them.
-        - Even if fields are missing, set "status": "ready" so the process continues.
-        - Just list the missing fields in "missing_fields".
-        
-        [Data Source Rule]
-        - **Consider ALL information provided by the 'User'.**
-        - If the User says "Use that example" or "Similar to above", allow using Assistant's context.
-        
-        [Essential Fields to Check]
-        1. Case Title (사건 제목)
-        2. Audit Background (감사 배경)
-        3. Audit Objectives (감사 목적)
-        4. Audit Methodology (감사 방법)
-        5. Audit Period (감사 기간)
-        6. Subject (대상 기관)
-        7. Issue (문제점/지적사항)
+        당신은 보고서 요건 분석가(Request Analyst)입니다.
+        대화 내역을 분석하여 감사 보고서 작성에 필요한 필수 정보가 포함되어 있는지 확인하십시오.
 
-        Return a JSON object with:
-        - "missing_fields": List of missing field names (in Korean).
-        - "status": ALWAYS "ready". (We want to proceed with placeholders).
-        
-        Example JSON:
+        [판단 기준 - Interactive Mode]
+        - 필수 항목(사건 제목, 대상 기관, 문제점) 중 2개 이상이 누락되었거나, 대화 내용이 턱없이 부족하면 "status": "missing_info"를 반환하여 사용자에게 되물으십시오.
+        - 단, 사용자가 "그냥 써줘", "임의로 작성해", "알아서 해"라고 강제하거나 정보가 80% 이상 충족되면 "status": "ready"로 진행하십시오.
+
+        [데이터 소스 규칙]
+        - **사용자가 제공한 모든 정보를 고려하십시오.**
+        - 사용자가 "위 사례를 사용해" 또는 "위와 비슷하게"라고 하면, 어시스턴트의 맥락을 사용하는 것을 허용하십시오.
+
+        [확인할 필수 항목]
+        1. 사건 제목
+        2. 감사 배경
+        3. 감사 목적
+        4. 감사 방법
+        5. 감사 기간
+        6. 대상 기관
+        7. 문제점/지적사항
+
+        다음 필드를 포함한 JSON 객체를 반환하십시오:
+        - "missing_fields": 누락된 필드 이름 리스트 (한국어).
+        - "status": 항상 "ready". (플레이스홀더를 사용하여 진행하므로).
+
+        예시 JSON:
         {{
             "status": "ready",
             "missing_fields": ["감사 기간", "대상 기관"]
@@ -82,7 +84,7 @@ class DraftingAgent:
 
             return result
         except Exception as e:
-            print(f"Error analyzing requirements: {e}")
+            logger.error(f"Error analyzing requirements: {e}")
             return {
                 "status": "ready",
                 "missing_fields": [],
@@ -97,7 +99,7 @@ class DraftingAgent:
         """
         Generates a structured audit report with strict Source A vs Source B separation.
         """
-        print("--- [DraftingAgent] Generating Report (Structured) ---")
+        logger.info("--- [DraftingAgent] Generating Report (Structured) ---")
 
         # 1. Format References (Source B)
         formatted_references = ""
@@ -212,14 +214,14 @@ class DraftingAgent:
             # 4. Self-Correction (Refinement)
             return self.refine_report(report_draft, formatted_history, add_info_str)
         except Exception as e:
-            print(f"Error generating report: {e}")
+            logger.error(f"Error generating report: {e}")
             return "보고서 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
 
     def refine_report(self, draft: str, source_facts: str, add_info: str) -> str:
         """
         Self-Correction step: Checks if the draft contains hallucinated punishments or details.
         """
-        print("--- [DraftingAgent] Refining Report (Self-Correction) ---")
+        logger.info("--- [DraftingAgent] Refining Report (Self-Correction) ---")
 
         system_prompt = """
 당신은 공공감사 보고서의 최종 검수관입니다. '초안 보고서'가 '사실 근거(Fact Source)'를 위반했는지 검사하고 교정하십시오.
@@ -280,5 +282,5 @@ class DraftingAgent:
             )
             return refined_report
         except Exception as e:
-            print(f"Error refining report: {e}")
+            logger.error(f"Error refining report: {e}")
             return draft  # Fallback to original draft

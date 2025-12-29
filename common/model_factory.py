@@ -6,6 +6,9 @@ except ImportError:
     pass
 from langchain_openai import ChatOpenAI
 from common.config import Config
+from common.logger_config import setup_logger
+
+logger = setup_logger("ModelFactory")
 
 
 class ModelFactory:
@@ -23,7 +26,7 @@ class ModelFactory:
         """
         if level == "reasoning":
             model_name = Config.HCX_MODEL_REASONING
-            print(f"[ModelFactory] RAG Agent using {model_name} (Level: {level})")
+            logger.info(f"RAG Agent using {model_name} (Level: {level})")
             return ChatClovaX(
                 model=model_name,
                 max_tokens=4096,  # Higher limit for deep thinking output
@@ -31,7 +34,7 @@ class ModelFactory:
             )
         elif level == "heavy":
             model_name = Config.HCX_MODEL_HEAVY  # Defaults to STANDARD (003)
-            print(f"[ModelFactory] RAG Agent using {model_name} (Level: {level})")
+            logger.info(f"RAG Agent using {model_name} (Level: {level})")
             return ChatClovaX(
                 model=model_name,
                 max_tokens=2048,
@@ -39,7 +42,7 @@ class ModelFactory:
             )
         else:
             model_name = Config.HCX_MODEL_LIGHT
-            print(f"[ModelFactory] RAG Agent using {model_name} (Level: {level})")
+            logger.info(f"RAG Agent using {model_name} (Level: {level})")
             return ChatClovaX(
                 model=model_name,
                 temperature=temperature,
@@ -60,7 +63,7 @@ class ModelFactory:
                 if level == "heavy"
                 else Config.GEMINI_MODEL_LIGHT
             )
-            print(f"[ModelFactory] Evaluation using Gemini: {model_name}")
+            logger.info(f"Evaluation using Gemini: {model_name}")
             return ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
 
         elif provider == "openai":
@@ -69,7 +72,7 @@ class ModelFactory:
                 if level == "heavy"
                 else Config.OPENAI_MODEL_LIGHT
             )
-            print(f"[ModelFactory] Evaluation using OpenAI: {model_name}")
+            logger.info(f"Evaluation using OpenAI: {model_name}")
             return ChatOpenAI(model=model_name, temperature=temperature)
 
         else:

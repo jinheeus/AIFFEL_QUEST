@@ -1,5 +1,8 @@
 from state import AgentState
 from .vector_retriever import get_retriever
+from common.logger_config import setup_logger
+
+logger = setup_logger("RETRIEVER")
 
 
 def retrieve_documents(state: AgentState) -> AgentState:
@@ -7,7 +10,9 @@ def retrieve_documents(state: AgentState) -> AgentState:
     [Node] 'search' 카테고리일 때 실행. Vector DB에서 관련 문서를 검색합니다.
     (Hybrid Retrieval Engine 사용)
     """
-    print("\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)")
+    logger.info(
+        "\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)"
+    )
 
     # Lazy Load Retriever
     rag_pipeline = get_retriever()
@@ -30,10 +35,10 @@ def retrieve_documents(state: AgentState) -> AgentState:
             selected_fields = state.get("selected_fields", [])
             if selected_fields:
                 enriched_q = f"{q} (Focus: {', '.join(selected_fields)})"
-                print(f" -> Sub-Search: '{enriched_q}'")
+                logger.info(f" -> Sub-Search: '{enriched_q}'")
                 search_q = enriched_q
             else:
-                print(f" -> Sub-Search: '{q}'")
+                logger.info(f" -> Sub-Search: '{q}'")
                 search_q = q
 
             # 복합 질문일 경우 top_k를 줄여서 토큰 절약 (기본 5 -> 3)
@@ -42,7 +47,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
             # (New) 메타데이터 필터 적용 (Hybrid Retrieval)
             filters = state.get("metadata_filters", {})
             if filters:
-                print(f" -> 필터 적용 (Applying Filters): {filters}")
+                logger.info(f" -> 필터 적용 (Applying Filters): {filters}")
 
             docs = rag_pipeline.search_and_merge(search_q, top_k=k, filters=filters)
             if docs:
@@ -64,7 +69,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
             # 사용자는 명확히 이전 문서를 지칭하고 있기 때문입니다.
             persist_docs = state.get("persist_documents", [])
             if persist_docs:
-                print(
+                logger.info(
                     f" -> [Fallback] Search returned 0 results. Using {len(persist_docs)} persisted documents."
                 )
                 state["documents"] = persist_docs
@@ -73,10 +78,10 @@ def retrieve_documents(state: AgentState) -> AgentState:
         else:
             state["documents"] = unique_docs
 
-        print(f" -> 검색 완료: 총 {len(unique_docs)}개 문서 병합됨")
+        logger.info(f" -> 검색 완료: 총 {len(unique_docs)}개 문서 병합됨")
 
     except Exception as e:
-        print(f" -> 검색 실패 (Search Failed): {e}")
+        logger.error(f" -> 검색 실패 (Search Failed): {e}")
         state["documents"] = [f"검색 중 오류 발생: {str(e)}"]
 
     return state

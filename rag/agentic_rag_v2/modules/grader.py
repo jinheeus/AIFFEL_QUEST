@@ -10,8 +10,7 @@ logger = setup_logger("GRADER")
 
 
 # --- LLM 초기화 ---
-# 평가(Evaluation) 모델은 구조화된 출력(Structured Output)을 잘 지원하는 모델(GPT-4o-mini 등)을 사용합니다.
-llm = ModelFactory.get_eval_model(level="light", temperature=0)
+llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
 
 
 # --- 1. 문서 평가기 (Retrieval Grader) ---
@@ -23,15 +22,15 @@ class GradeRetrieval(BaseModel):
     )
 
 
-retrieval_grader_system = """[Role]
+retrieval_grader_system = """[역할]
 당신은 검색된 문서가 사용자의 질문과 관련이 있는지 평가하는 평가자(Grader)입니다.
 
-[Goal]
+[목표]
 문서가 질문과 관련된 키워드나 의미론적 연관성을 포함하는지 확인하십시오.
 엄격한 기준을 적용할 필요는 없으며, 명백히 관련 없는 문서(erroneous retrievals)만 걸러내면 됩니다.
 
-[Output]
-Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."""
+[출력]
+문서가 질문과 관련이 있다면 'yes', 아니면 'no'를 반환하십시오."""
 
 retrieval_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -71,7 +70,13 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
         score = retrieval_grader_chain.invoke(
             {"question": question, "document": content}
         )
-        grade = score.binary_score
+        if score is None:
+            logger.warning(
+                f"Grading failed for doc {doc_id} (score is None). Defaulting to 'no'."
+            )
+            grade = "no"
+        else:
+            grade = score.binary_score
 
         if grade == "yes":
             logger.info(f" -> Document Relevant: {doc_id}")
@@ -95,16 +100,16 @@ class GradeHallucinations(BaseModel):
     )
 
 
-hallucination_grader_system = """[Role]
+hallucination_grader_system = """[역할]
 당신은 LLM이 생성한 답변이 제공된 "Fact(사실 문서)"들에 근거하고 있는지 평가하는 채점관입니다.
 
-[Goal]
+[목표]
 답변이 제공된 문서들에 있는 내용으로만 작성되었는지 확인하십시오.
 - 'yes': 답변이 문서의 내용에 의해 완전히 뒷받침됨.
 - 'no': 답변에 문서에 없는 내용(환각/외부지식)이 포함됨.
 
-[Output]
-Give a binary score 'yes' or 'no'."""
+[출력]
+'yes' 또는 'no'를 반환하십시오."""
 
 hallucination_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -138,6 +143,11 @@ def grade_hallucination(generation: str, documents: List[Document]) -> str:
     score = hallucination_grader_chain.invoke(
         {"documents": context, "generation": generation}
     )
+    if score is None:
+        logger.warning(
+            "Hallucination grading failed (score is None). Defaulting to 'no' (hallucinated)."
+        )
+        return "no"
     return score.binary_score
 
 
@@ -150,14 +160,14 @@ class GradeAnswer(BaseModel):
     )
 
 
-answer_grader_system = """[Role]
+answer_grader_system = """[역할]
 당신은 답변이 사용자의 질문을 실질적으로 해결했는지 평가하는 평가자입니다.
 
-[Goal]
+[목표]
 답변이 사용자의 의도나 질문에 올바르게 대응하고 있는지(유용한지) 확인하십시오.
 
-[Output]
-Give a binary score 'yes' or 'no'."""
+[출력]
+'yes' 또는 'no'를 반환하십시오."""
 
 answer_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -176,4 +186,9 @@ def grade_answer(question: str, generation: str) -> str:
     logger.info("--- [Modular RAG] Grading Answer Utility ---")
 
     score = answer_grader_chain.invoke({"question": question, "generation": generation})
+    if score is None:
+        logger.warning(
+            "Answer utility grading failed (score is None). Defaulting to 'no'."
+        )
+        return "no"
     return score.binary_score

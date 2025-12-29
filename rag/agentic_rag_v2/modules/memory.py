@@ -4,6 +4,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import SystemMessage, HumanMessage
 from state import AgentState
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+
+logger = setup_logger("MEMORY")
 
 
 # --- 요약 프롬프트 (Summary Prompt) ---
@@ -29,7 +32,7 @@ def summarize_conversation(state: AgentState) -> dict:
     [Node] 대화 기록을 요약하여 토큰을 절약합니다.
     대화의 가장 최근 부분(마지막 요약 이후 추가된 내용)을 가져와 요약을 업데이트합니다.
     """
-    print("--- [Node] Summarize Conversation (Memory) ---")
+    logger.info("--- [Node] Summarize Conversation (Memory) ---")
 
     current_summary = state.get("summary", "")
     messages = state.get("messages", [])
@@ -38,7 +41,7 @@ def summarize_conversation(state: AgentState) -> dict:
     # 전략: 기록이 길어지면(> 6), 마지막 2개 메시지(현재 턴)를 제외한 모든 내용을 요약합니다.
     # 이는 최근 컨텍스트는 그대로 유지하면서 나머지를 압축하기 위함입니다.
     if len(messages) <= 6:
-        print(" -> History short, skipping summary.")
+        logger.info(" -> History short, skipping summary.")
         return {"summary": current_summary}
 
     # 2. 요약할 메시지 슬라이싱 (Slice messages to summarize)
@@ -88,9 +91,9 @@ def summarize_conversation(state: AgentState) -> dict:
         chain = fresh_prompt | llm | StrOutputParser()
         new_summary = chain.invoke({"new_lines": text_to_summarize})
 
-        print(f" -> Summary Updated: {new_summary[:50]}...")
+        logger.info(f" -> Summary Updated: {new_summary[:50]}...")
         return {"summary": new_summary}
 
     except Exception as e:
-        print(f" -> Summary Generation Failed: {e}")
+        logger.error(f" -> Summary Generation Failed: {e}")
         return {"summary": current_summary}

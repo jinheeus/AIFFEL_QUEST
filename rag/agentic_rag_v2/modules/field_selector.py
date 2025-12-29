@@ -7,6 +7,11 @@ from state import AgentState
 from common.model_factory import ModelFactory
 
 
+from common.logger_config import setup_logger
+
+logger = setup_logger("FieldSelector")
+
+
 # --- 검증을 위한 출력 스키마 (Output Schema for Validation) ---
 class FieldSelectorOutput(BaseModel):
     selected_fields: List[str] = Field(
@@ -67,8 +72,7 @@ FIELD_SELECTOR_SYSTEM = """
 - JSON 외의 텍스트(Markdown block 등)는 포함하지 마십시오.
 
 예시:
-Qual: "최신 내부통제 위반 사례 2개 알려줘"
-Resp:
+"최신 내부통제 위반 사례 2개 알려줘"에 대한 응답:
 {{
   "selected_fields": ["problems", "outline"],
   "selected_fields_cot": [
@@ -96,7 +100,7 @@ def field_selector(state: AgentState) -> dict:
     사용자의 질문을 분석하여 메타데이터 필터를 추출하고,
     CoT(Chain-of-Thought) 추론을 통해 검색에 필요한 관련 필드를 선택합니다.
     """
-    print("--- [Node] Field Selector (CoT) ---")
+    logger.info("--- [Node] Field Selector (CoT) ---")
     # 우선순위: 원본 질문(Original Query)을 사용하여 "최신", "2개" 같은 의도를 파악합니다.
     # 'search_query'는 키워드 위주로 최적화되어 수식어가 제거되었을 수 있기 때문입니다.
     question = state["query"]
@@ -112,7 +116,7 @@ def field_selector(state: AgentState) -> dict:
         )
 
     # 1. LLM 초기화
-    llm = ModelFactory.get_eval_model(level="light", temperature=0)
+    llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
     parser = JsonOutputParser(pydantic_object=FieldSelectorOutput)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -157,9 +161,9 @@ def field_selector(state: AgentState) -> dict:
         if sort_order and sort_order != "relevance":
             extracted_filters["sort"] = sort_order
 
-        print(f" -> CoT: {cot}")
-        print(f" -> Fields: {merged_fields}")
-        print(f" -> Filters: {extracted_filters}")
+        logger.info(f" -> CoT: {cot}")
+        logger.info(f" -> Fields: {merged_fields}")
+        logger.info(f" -> Filters: {extracted_filters}")
 
         return {
             "selected_fields": merged_fields,
@@ -168,7 +172,7 @@ def field_selector(state: AgentState) -> dict:
         }
 
     except Exception as e:
-        print(f" -> Field Selector Failed: {e}")
+        logger.error(f" -> Field Selector Failed: {e}")
         return {
             "selected_fields": ["outline", "problems"],
             "selected_fields_cot": [f"Error: {str(e)}"],

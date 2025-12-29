@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 
 from state import AgentState
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+
+logger = setup_logger("SOP_RETRIEVER")
 
 
 # --- Data Models (Pydantic) ---
@@ -150,7 +153,7 @@ def sop_retriever(state: AgentState) -> dict:
     3. 규정 준수 확인 (Compliance Check)
     4. 처분 결정 (Disposition Decision)
     """
-    print("--- [Node] SOP Generator (4-Step Chain) ---")
+    logger.info("--- [Node] SOP Generator (4-Step Chain) ---")
     query = state.get("search_query") or state["query"]
     docs = state.get("documents", [])
 
@@ -171,7 +174,7 @@ def sop_retriever(state: AgentState) -> dict:
     )  # 추론을 위해 Heavy 모델 사용
 
     # 1단계: 사실 추출 (Step 1: Fact Extraction)
-    print(" -> 1. Extracting Facts...")
+    logger.info(" -> 1. Extracting Facts...")
     fact_chain = (
         ChatPromptTemplate.from_template(FACT_PROMPT)
         | llm
@@ -188,14 +191,14 @@ def sop_retriever(state: AgentState) -> dict:
         }
 
     # 2단계: 규정 매칭 (Step 2: Regulation Matching)
-    print(" -> 2. Matching Regulations...")
+    logger.info(" -> 2. Matching Regulations...")
     reg_chain = (
         ChatPromptTemplate.from_template(REGULATION_PROMPT) | llm | StrOutputParser()
     )
     regs = reg_chain.invoke({"facts": str(facts)})
 
     # 3단계: 규정 준수 확인 (Step 3: Compliance Check)
-    print(" -> 3. Checking Compliance...")
+    logger.info(" -> 3. Checking Compliance...")
     comp_chain = (
         ChatPromptTemplate.from_template(COMPLIANCE_PROMPT)
         | llm
@@ -211,7 +214,7 @@ def sop_retriever(state: AgentState) -> dict:
         }
 
     # 4단계: 처분 결정 (Step 4: Disposition)
-    print(" -> 4. Determining Disposition...")
+    logger.info(" -> 4. Determining Disposition...")
     disp_chain = (
         ChatPromptTemplate.from_template(DISPOSITION_PROMPT)
         | llm
@@ -230,8 +233,8 @@ def sop_retriever(state: AgentState) -> dict:
 3. **Compliance**: {compliance["status"]} ({compliance["reasoning"]})
 4. **Disposition**: {disposition["disposition"]} - {disposition["detail"]}
 """
-    print(f" -> SOP Result: {compliance['status']} / {disposition['disposition']}")
-
-    # 상세 결과를 주석 처리하거나 로그로 남깁니다. (Optional)
+    logger.info(
+        f" -> SOP Result: {compliance['status']} / {disposition['disposition']}"
+    )
 
     return {"sop_context": sop_result}

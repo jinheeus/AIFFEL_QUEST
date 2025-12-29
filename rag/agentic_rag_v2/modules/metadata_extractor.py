@@ -2,6 +2,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from state import AgentState
 from common.model_factory import ModelFactory
+from common.logger_config import setup_logger
+
+logger = setup_logger("METADATA_EXTRACTOR")
 
 # --- Initialize LLM ---
 llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
@@ -59,7 +62,7 @@ extractor_chain = extractor_prompt | llm | JsonOutputParser()
 
 
 def extract_metadata(state: AgentState) -> dict:
-    print("--- [Node] Metadata Extractor ---")
+    logger.info("--- [Node] Metadata Extractor ---")
     query = state.get("search_query") or state["query"]
 
     try:
@@ -70,12 +73,12 @@ def extract_metadata(state: AgentState) -> dict:
         filters = {k: v for k, v in filters.items() if v}
 
         if filters:
-            print(f" -> Extracted Filters: {filters}")
+            logger.info(f" -> Extracted Filters: {filters}")
         else:
-            print(" -> No filters extracted.")
+            logger.info(" -> No filters extracted.")
 
         return {"metadata_filters": filters}
 
     except Exception as e:
-        print(f" -> Extraction Failed: {e}")
+        logger.error(f" -> Extraction Failed: {e}")
         return {"metadata_filters": {}}

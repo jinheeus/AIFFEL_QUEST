@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
@@ -30,7 +30,7 @@ class FieldSelectorOutput(BaseModel):
     )
 
 
-# --- Prompts from Legacy Notebook ---
+# --- Field Selector Prompts ---
 FIELD_SELECTOR_SYSTEM = """
 [역할]
 당신은 감사 보고서 기반 RAG 시스템의 필드 선택기(Field Selector)입니다.
@@ -146,9 +146,8 @@ def field_selector(state: AgentState) -> dict:
         if "problems" not in merged_fields:
             merged_fields.append("problems")
 
-        # 메타데이터 로직 (현재는 필드/키워드 기반의 단순 매핑)
-        # 구체적인 카테고리 추출은 별도 로직이 담당한다고 가정하지만,
-        # 여기서는 노트북의 로직을 따라 FIELDS 선택에 집중합니다.
+        # 메타데이터 로직 (Metadata Extraction Logic)
+        # 현재는 필드/키워드 기반의 매핑을 수행하며, 추후 고도화 가능
         extracted_filters = {}
 
         # limit(문서 개수) 추출

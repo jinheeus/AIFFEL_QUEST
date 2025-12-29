@@ -19,11 +19,11 @@ logger = setup_logger("VECTOR_RETRIEVER")
 class VectorRetriever:
     """
     Agentic RAG를 위한 전용 하이브리드 검색기 (Hybrid Retriever)입니다.
-    구현 내용:
+    주요 컴포넌트:
     1. 밀집 벡터 검색 (Dense Vector Search - Milvus)
     2. 희소 키워드 검색 (Sparse Keyword Search - BM25)
-    3. 하이브리드 퓨전 (RRF Fusion)
-    4. 리랭킹 (Reranking - BGE-Reranker)
+    3. 하이브리드 결합 (Hybrid Fusion - RRF)
+    4. 재순위화 (Reranking - BGE-M3)
     """
 
     def __init__(self):
@@ -49,7 +49,7 @@ class VectorRetriever:
             auto_id=True,
         )
 
-        # 3. 리랭커 초기화 (Reranker)
+        # 3. 리랭커 초기화 (Initialize Reranker)
         try:
             self.reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
             logger.info("Reranker Loaded: BAAI/bge-reranker-v2-m3")
@@ -58,7 +58,7 @@ class VectorRetriever:
             self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
         # 4. BM25 인덱스 구축 (Build BM25 Index)
-        # 초기 구동 시 비용이 들지만 Hybrid 검색을 위해 필수적입니다.
+        # Hybrid Retrieval을 위해 필수
         self._build_bm25_index()
 
     def _load_documents_from_milvus(self) -> List[Dict[str, Any]]:

@@ -9,7 +9,7 @@ from common.logger_config import setup_logger
 logger = setup_logger("GRADER")
 
 
-# --- LLM 초기화 ---
+# --- LLM 초기화 (Initialization) ---
 llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
 
 
@@ -46,7 +46,7 @@ retrieval_grader_chain = retrieval_grader_prompt | llm.with_structured_output(
 
 def grade_documents(question: str, documents: List[Document]) -> dict:
     """
-    검색된 문서들의 관련성(Relevance)을 평가합니다.
+    검색된 문서의 관련성(Relevance)을 평가합니다.
     """
     logger.info("--- [Modular RAG] Grading Documents ---")
 

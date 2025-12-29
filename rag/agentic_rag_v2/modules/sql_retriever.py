@@ -27,12 +27,7 @@ logger = setup_logger("SQL_RETRIEVER")
 class SQLRetriever:
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            # Default to common/audit_metadata.db
-            # Try to resolve relative to project root if possible, or relative to this file
-            # If running from root, 'common/audit_metadata.db' might work, but let's be safe.
-            # Re-calculating project root robustly:
-            # If we are in /.../rag/agentic_rag_v2/modules/sql_retriever.py
-            # Root is 3 levels up from 'modules'
+            # Resolve common/audit_metadata.db relative to project root
             self.db_path = os.path.join(project_root, "common", "audit_metadata.db")
         else:
             self.db_path = db_path
@@ -49,7 +44,7 @@ class SQLRetriever:
         # ChatClovaX 초기화
         self.llm = ChatClovaX(model=Config.LLM_MODEL, temperature=0.05, max_tokens=2048)
 
-        # LLM이 이해하기 위한 스키마 정보 (Schema for LLM)
+        # Schema definition for the LLM
         self.schema_info = """
 Table: audits
 Columns:
@@ -137,7 +132,7 @@ SQL Query:
         """
         logger.info(f"Processing Query: {query}")
 
-        # 컨텍스트 포맷팅 (Format Context)
+        # Context Formatting
         context_str = "No context available."
         if context:
             formatted = []

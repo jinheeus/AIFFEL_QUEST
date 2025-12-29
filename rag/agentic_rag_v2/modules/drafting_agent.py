@@ -1,7 +1,6 @@
 from typing import List, Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from common.model_factory import ModelFactory
 from common.logger_config import setup_logger
 
@@ -15,7 +14,7 @@ class DraftingAgent:
     """
 
     def __init__(self):
-        # Upgrade to 'reasoning' (HCX-007) for better adherence to instructions
+        # 복잡한 지시 이행을 위해 Reasoning Model (HCX-007) 사용
         self.llm = ModelFactory.get_rag_model(level="reasoning", temperature=0.1)
         self.checker_llm = ModelFactory.get_rag_model(level="light", temperature=0.0)
 

@@ -1,4 +1,3 @@
-from typing import Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from pydantic import BaseModel, Field
@@ -173,7 +172,7 @@ def sop_retriever(state: AgentState) -> dict:
         level="heavy", temperature=0
     )  # 추론을 위해 Heavy 모델 사용
 
-    # 1단계: 사실 추출 (Step 1: Fact Extraction)
+    # Step 1: Fact Extraction
     logger.info(" -> 1. Extracting Facts...")
     fact_chain = (
         ChatPromptTemplate.from_template(FACT_PROMPT)
@@ -190,14 +189,14 @@ def sop_retriever(state: AgentState) -> dict:
             "date": "-",
         }
 
-    # 2단계: 규정 매칭 (Step 2: Regulation Matching)
+    # Step 2: Regulation Matching
     logger.info(" -> 2. Matching Regulations...")
     reg_chain = (
         ChatPromptTemplate.from_template(REGULATION_PROMPT) | llm | StrOutputParser()
     )
     regs = reg_chain.invoke({"facts": str(facts)})
 
-    # 3단계: 규정 준수 확인 (Step 3: Compliance Check)
+    # Step 3: Compliance Check
     logger.info(" -> 3. Checking Compliance...")
     comp_chain = (
         ChatPromptTemplate.from_template(COMPLIANCE_PROMPT)
@@ -213,7 +212,7 @@ def sop_retriever(state: AgentState) -> dict:
             "matched_regulation": regs,
         }
 
-    # 4단계: 처분 결정 (Step 4: Disposition)
+    # Step 4: Disposition Decision
     logger.info(" -> 4. Determining Disposition...")
     disp_chain = (
         ChatPromptTemplate.from_template(DISPOSITION_PROMPT)
@@ -225,7 +224,7 @@ def sop_retriever(state: AgentState) -> dict:
     except:
         disposition = {"disposition": "Refer to Manual", "detail": "Logic Error"}
 
-    # Generator를 위한 최종 출력 포맷팅 (Format Final Output)
+    # Format Final Output for Generator
     sop_result = f"""
 [SOP Analysis Result]
 1. **Facts**: {facts}

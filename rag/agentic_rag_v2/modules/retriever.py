@@ -7,8 +7,8 @@ logger = setup_logger("RETRIEVER")
 
 def retrieve_documents(state: AgentState) -> AgentState:
     """
-    [Node] 'search' 카테고리일 때 실행. Vector DB에서 관련 문서를 검색합니다.
-    (Hybrid Retrieval Engine 사용)
+    [Node] Vector DB 검색 노드 (Search Category).
+    Hybrid Retrieval Engine을 사용합니다.
     """
     logger.info(
         "\n[Node] retrieve_documents: 문서 검색 중... (Hybrid Retrieval Engine)"
@@ -18,8 +18,8 @@ def retrieve_documents(state: AgentState) -> AgentState:
     rag_pipeline = get_retriever()
 
     try:
-        # 1. 문서 검색을 위한 쿼리 결정 (우선순위: search_query -> sub_queries -> query)
-        # 'search_query'가 있으면 최우선으로 사용합니다.
+        # 1. 검색 쿼리 결정 (우선순위: search_query > sub_queries > query)
+        # RewriteQuery 노드에서 생성된 'search_query'가 있으면 우선 사용
         if state.get("search_query"):
             queries = [state["search_query"]]
         elif state.get("sub_queries"):
@@ -31,7 +31,7 @@ def retrieve_documents(state: AgentState) -> AgentState:
 
         # 2. 쿼리별 반복 검색 수행 (Iterative Search)
         for q in queries:
-            # 선택된 필드(Selected Fields)를 쿼리에 주입하여 문맥 보강 (Context Injection)
+            # Selected Fields를 쿼리에 주입하여 문맥 보강 (Context Injection)
             selected_fields = state.get("selected_fields", [])
             if selected_fields:
                 enriched_q = f"{q} (Focus: {', '.join(selected_fields)})"
@@ -41,10 +41,10 @@ def retrieve_documents(state: AgentState) -> AgentState:
                 logger.info(f" -> Sub-Search: '{q}'")
                 search_q = q
 
-            # 복합 질문일 경우 top_k를 줄여서 토큰 절약 (기본 5 -> 3)
+            # 복합 질문일 경우 Token 절약을 위해 top_k 축소 (기본 5 -> 3)
             k = 3 if len(queries) > 1 else 5
 
-            # (New) 메타데이터 필터 적용 (Hybrid Retrieval)
+            # 메타데이터 필터 적용 (Hybrid Retrieval)
             filters = state.get("metadata_filters", {})
             if filters:
                 logger.info(f" -> 필터 적용 (Applying Filters): {filters}")
@@ -53,8 +53,8 @@ def retrieve_documents(state: AgentState) -> AgentState:
             if docs:
                 all_docs.extend(docs)
 
-        # 3. 중복 제거 (Content-based deduplication)
-        # 문서 객체의 내용을 기준으로 중복을 제거합니다.
+        # 3. 중복 제거 (Content-based Deduplication)
+        # 문서 내용을 기준으로 중복을 제거합니다.
         unique_docs = []
         seen_content = set()
 
@@ -64,9 +64,8 @@ def retrieve_documents(state: AgentState) -> AgentState:
                 seen_content.add(d.page_content)
 
         if not unique_docs:
-            # [Fallback] 검색 결과가 없지만 이전 턴의 문서(Persistent Docs)가 있는 경우 사용합니다.
-            # 예: "2번 문서에 대해 더 알려줘"라고 했을 때 검색어 매칭이 실패하더라도,
-            # 사용자는 명확히 이전 문서를 지칭하고 있기 때문입니다.
+            # [Fallback] 검색 결과가 0개면 이전 턴의 문서(Persisted Docs) 사용.
+            # 예: "2번 문서에 대해 더 알려줘" 같은 후속 질문 처리.
             persist_docs = state.get("persist_documents", [])
             if persist_docs:
                 logger.info(

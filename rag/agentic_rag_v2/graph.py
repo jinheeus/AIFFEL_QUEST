@@ -78,11 +78,10 @@ def node_router(state: AgentState):
 
     # Intent Classification
     try:
-        # Revert to HyperCLOVA X (User Requirement)
+        # [HyperCLOVA X] Heavy 모델로 의도 분석 (Reasoning Optimized)
         llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
 
-        # [Fix] Abandon JSON Parser for Router because HCX is unstable with JSON.
-        # Use String Result and parse it manually.
+        # [Note] HCX 안정성을 위해 문자열 출력 파싱 방식 사용
 
         system_prompt = """당신은 감사 RAG 시스템의 의도 분류기(Intent Classifier)입니다.
 
@@ -236,7 +235,7 @@ def node_router(state: AgentState):
             "search_query": "",
             "sub_queries": [],
             "documents": [],
-            "persist_documents": final_persist_docs,  # Updated Logic
+            "persist_documents": final_persist_docs,
             "graph_context": [],
             "sop_context": "",
             "grade_status": "",

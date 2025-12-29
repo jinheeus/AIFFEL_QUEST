@@ -42,7 +42,8 @@ def summarize_conversation(state: AgentState) -> dict:
     # 이는 최근 컨텍스트는 그대로 유지하면서 나머지를 압축하기 위함입니다.
     if len(messages) <= 6:
         logger.info(" -> History short, skipping summary.")
-        return {"summary": current_summary}
+        # [UX Fix] State Passthrough for answer
+        return {"summary": current_summary, "answer": state.get("answer", "")}
 
     # 2. 요약할 메시지 슬라이싱 (Slice messages to summarize)
     # 마지막 2개는 즉각적인 컨텍스트를 위해 남겨두고 나머지를 요약합니다.
@@ -92,8 +93,10 @@ def summarize_conversation(state: AgentState) -> dict:
         new_summary = chain.invoke({"new_lines": text_to_summarize})
 
         logger.info(f" -> Summary Updated: {new_summary[:50]}...")
-        return {"summary": new_summary}
+
+        # [UX Fix] Return answer for frontend streaming
+        return {"summary": new_summary, "answer": state.get("answer", "")}
 
     except Exception as e:
         logger.error(f" -> Summary Generation Failed: {e}")
-        return {"summary": current_summary}
+        return {"summary": current_summary, "answer": state.get("answer", "")}

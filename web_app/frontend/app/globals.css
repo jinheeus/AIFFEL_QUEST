@@ -58,26 +58,31 @@ body {
 /* Headings */
 .markdown-prose h1,
 .markdown-prose h2,
-.markdown-prose h3 {
+.markdown-prose h3,
+.markdown-prose h4 {
     color: #111827;
     font-weight: 700;
-    margin-top: 1.5em;
+    margin-top: 1.3em;
     margin-bottom: 0.75em;
-    line-height: 1.3;
+    line-height: 1.2;
 }
 
 .markdown-prose h1 {
-    font-size: 1.5em;
+    font-size: 1.75em;
 }
 
 .markdown-prose h2 {
-    font-size: 1.25em;
+    font-size: 1.5em;
     border-bottom: 1px solid #e5e7eb;
     padding-bottom: 0.3em;
 }
 
 .markdown-prose h3 {
-    font-size: 1.1em;
+    font-size: 1.25em;
+}
+
+.markdown-prose h4 {
+    font-size: 1em;
 }
 
 /* Lists */

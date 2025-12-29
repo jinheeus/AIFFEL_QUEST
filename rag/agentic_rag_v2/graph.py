@@ -231,8 +231,9 @@ def route_retrieval(state: AgentState):
     is_success = state.get("grade_status", "no")
     retry_count = state.get("retrieval_count", 0)
 
-    if is_success == "yes" or retry_count >= 3:
-        if retry_count >= 3:
+    # [Optimization] Max Retries Reduced 3 -> 2
+    if is_success == "yes" or retry_count >= 2:
+        if retry_count >= 2:
             logger.info(" -> [Stop] Max retries reached. Proceeding to SOP.")
         return "sop_retriever"
     else:
@@ -243,7 +244,8 @@ def route_retrieval(state: AgentState):
 def route_verification(state: AgentState):
     """Self-RAG 로직: 환각 및 유용성 검증 후 재시도 여부 결정."""
     reflection_count = state.get("reflection_count", 0)
-    if reflection_count >= 3:
+    # [Optimization] Max Retries Reduced 3 -> 2
+    if reflection_count >= 2:
         logger.info(" -> [Stop] Max reflection reached.")
         return END
 

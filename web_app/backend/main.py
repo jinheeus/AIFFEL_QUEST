@@ -5,7 +5,6 @@ import asyncio
 from typing import AsyncGenerator
 
 # Add parent directory to path to import agentic_rag_v2 modules
-current_dir = os.path.dirname(os.path.abspath(__file__))
 # web_app/backend -> web_app -> project_root
 project_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -19,10 +18,7 @@ rag_dir = os.path.join(project_root, "rag", Config.ACTIVE_RAG_DIR)
 print(f"🔹 [Backend] Active RAG Module: {rag_dir}")
 sys.path.append(rag_dir)  # Add dynamic RAG module to path
 
-# Ensure Environment Variables are loaded (if needed)
-# from common.config import Config (Already imported above)
-
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -67,7 +63,6 @@ async def startup_event():
 
 class ChatRequest(BaseModel):
     query: str
-    # persona field removed
     history: list = []  # (New) history input
     session_id: str = "default_session"  # New: for persistent memory
     additional_info: dict = {}  # New: for report generation inputs
@@ -79,7 +74,6 @@ NODE_NAMES = {
     "chat_worker": "일상 대화 처리",
     "retrieve_sql": "SQL 기반 메타데이터 검색",
     "report_manager": "보고서 작성 모드",
-    "field_selector": "검색 필드 선택",
     "hybrid_retriever": "규정 및 사례 검색 (Hybrid)",
     "grade_documents": "문서 적합성 평가",
     "sop_retriever": "업무 편람(SOP) 검색",
@@ -105,9 +99,7 @@ async def event_generator(
     Yields Server-Sent Events (SSE) for the frontend.
     """
     inputs = {
-        # persona field removed
         # Do NOT initialize documents=[], or it wipes previous state before Router can save it!
-        # "documents": [],
         "messages": history,  # Pass history to graph state
         "reflection_count": 0,
     }
@@ -139,25 +131,24 @@ async def event_generator(
                 yield f"data: {json.dumps({'type': 'status', 'node': key, 'content': status_msg})}\n\n"
 
                 # 2. If Final Answer is ready
-                # We need to capture the answer from any node that produces a final output.
-                # - 'generate_answer' / 'reflect_answer' (Standard RAG)
-                # - 'judge_verdict' (Adversarial Audit)
-                # - 'determine_disposition' (SOP - No Violation case)
-                final_answer_nodes = [
-                    "chat_worker",
-                    "generate",
-                    "generate_answer",
-                    "reflect_answer",
-                    "judge_verdict",
-                    "determine_disposition",
-                    "report_manager",  # Added
+                # [UX Fix] Only stream answer if it comes from a TERMINAL node or explicitly marked verification pass.
+                # Nodes that mean the answer is truly final and safe to show:
+                safe_answer_nodes = [
+                    "chat_worker",  # Simple chat, always final
+                    "summarize_conversation",  # End of RAG flow
+                    "report_manager",  # Report ready signal
                 ]
 
-                if key in final_answer_nodes:
+                # Special Case: If we are in 'fast' mode, 'generate' IS final because we skip verification.
+                # However, the graph structure sends 'generate' -> 'summarize_conversation' anyway.
+                # So waiting for 'summarize_conversation' is safer/cleaner.
+
+                if key in safe_answer_nodes:
+                    # We need to dig the answer from the state.
                     if "answer" in value and value["answer"]:
                         yield f"data: {json.dumps({'type': 'answer', 'content': value['answer']})}\n\n"
 
-                    # [New] Command Handling (e.g., Open Report)
+                    # [New] Command Handling
                     if "command" in value and value["command"]:
                         yield f"data: {json.dumps({'type': 'command', 'content': value['command']})}\n\n"
 

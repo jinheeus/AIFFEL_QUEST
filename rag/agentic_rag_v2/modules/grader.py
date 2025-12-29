@@ -1,5 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
+from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from typing import List
 
@@ -10,7 +11,7 @@ logger = setup_logger("GRADER")
 
 
 # --- LLM 초기화 (Initialization) ---
-llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
+llm = ModelFactory.get_rag_model(level="light", temperature=0)
 
 
 # --- 1. 문서 평가기 (Retrieval Grader) ---
@@ -29,8 +30,12 @@ retrieval_grader_system = """[역할]
 문서가 질문과 관련된 키워드나 의미론적 연관성을 포함하는지 확인하십시오.
 엄격한 기준을 적용할 필요는 없으며, 명백히 관련 없는 문서(erroneous retrievals)만 걸러내면 됩니다.
 
-[출력]
-문서가 질문과 관련이 있다면 'yes', 아니면 'no'를 반환하십시오."""
+[출력 형식]
+반드시 다음 JSON 형식으로만 출력하십시오:
+{{
+    "binary_score": "yes" 또는 "no"
+}}
+"""
 
 retrieval_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -39,9 +44,8 @@ retrieval_grader_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-retrieval_grader_chain = retrieval_grader_prompt | llm.with_structured_output(
-    GradeRetrieval
-)
+# [Fix] Use JsonOutputParser instead of tool calling for HCX-DASH compatibility
+retrieval_grader_chain = retrieval_grader_prompt | llm | JsonOutputParser()
 
 
 def grade_documents(question: str, documents: List[Document]) -> dict:
@@ -67,16 +71,17 @@ def grade_documents(question: str, documents: List[Document]) -> dict:
                 or content[:30] + "..."
             )
 
-        score = retrieval_grader_chain.invoke(
-            {"question": question, "document": content}
-        )
-        if score is None:
+        try:
+            score = retrieval_grader_chain.invoke(
+                {"question": question, "document": content}
+            )
+            # JsonOutputParser returns a dict directly
+            grade = score.get("binary_score", "no")
+        except Exception as e:
             logger.warning(
-                f"Grading failed for doc {doc_id} (score is None). Defaulting to 'no'."
+                f"Grading failed for doc {doc_id} ({e}). Defaulting to 'no'."
             )
             grade = "no"
-        else:
-            grade = score.binary_score
 
         if grade == "yes":
             logger.info(f" -> Document Relevant: {doc_id}")
@@ -108,8 +113,12 @@ hallucination_grader_system = """[역할]
 - 'yes': 답변이 문서의 내용에 의해 완전히 뒷받침됨.
 - 'no': 답변에 문서에 없는 내용(환각/외부지식)이 포함됨.
 
-[출력]
-'yes' 또는 'no'를 반환하십시오."""
+[출력 형식]
+반드시 다음 JSON 형식으로만 출력하십시오:
+{{
+    "binary_score": "yes" 또는 "no"
+}}
+"""
 
 hallucination_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -118,9 +127,7 @@ hallucination_grader_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-hallucination_grader_chain = hallucination_grader_prompt | llm.with_structured_output(
-    GradeHallucinations
-)
+hallucination_grader_chain = hallucination_grader_prompt | llm | JsonOutputParser()
 
 
 def grade_hallucination(generation: str, documents: List[Document]) -> str:
@@ -140,15 +147,16 @@ def grade_hallucination(generation: str, documents: List[Document]) -> str:
 
     context = "\n\n".join(docs_text)
 
-    score = hallucination_grader_chain.invoke(
-        {"documents": context, "generation": generation}
-    )
-    if score is None:
+    try:
+        score = hallucination_grader_chain.invoke(
+            {"documents": context, "generation": generation}
+        )
+        return score.get("binary_score", "no")
+    except Exception as e:
         logger.warning(
-            "Hallucination grading failed (score is None). Defaulting to 'no' (hallucinated)."
+            f"Hallucination grading failed ({e}). Defaulting to 'no' (hallucinated)."
         )
         return "no"
-    return score.binary_score
 
 
 # --- 3. 답변 유용성 평가기 (Answer Grader) ---
@@ -166,8 +174,12 @@ answer_grader_system = """[역할]
 [목표]
 답변이 사용자의 의도나 질문에 올바르게 대응하고 있는지(유용한지) 확인하십시오.
 
-[출력]
-'yes' 또는 'no'를 반환하십시오."""
+[출력 형식]
+반드시 다음 JSON 형식으로만 출력하십시오:
+{{
+    "binary_score": "yes" 또는 "no"
+}}
+"""
 
 answer_grader_prompt = ChatPromptTemplate.from_messages(
     [
@@ -176,7 +188,7 @@ answer_grader_prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
-answer_grader_chain = answer_grader_prompt | llm.with_structured_output(GradeAnswer)
+answer_grader_chain = answer_grader_prompt | llm | JsonOutputParser()
 
 
 def grade_answer(question: str, generation: str) -> str:
@@ -185,10 +197,11 @@ def grade_answer(question: str, generation: str) -> str:
     """
     logger.info("--- [Modular RAG] Grading Answer Utility ---")
 
-    score = answer_grader_chain.invoke({"question": question, "generation": generation})
-    if score is None:
-        logger.warning(
-            "Answer utility grading failed (score is None). Defaulting to 'no'."
+    try:
+        score = answer_grader_chain.invoke(
+            {"question": question, "generation": generation}
         )
+        return score.get("binary_score", "no")
+    except Exception as e:
+        logger.warning(f"Answer utility grading failed ({e}). Defaulting to 'no'.")
         return "no"
-    return score.binary_score

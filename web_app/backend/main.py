@@ -15,6 +15,15 @@ sys.path.append(project_root)  # Load project root first to import common.config
 from common.config import Config
 
 rag_dir = os.path.join(project_root, "rag", Config.ACTIVE_RAG_DIR)
+
+# [Fix] Windows CP949 Encoding Issue
+# Reconfigure stdout to use utf-8 so emojis don't crash the app
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 print(f"🔹 [Backend] Active RAG Module: {rag_dir}")
 sys.path.append(rag_dir)  # Add dynamic RAG module to path
 

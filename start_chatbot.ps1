@@ -21,6 +21,7 @@ try {
     # 1. Start Backend
     Write-Host "🔹 [Backend] Starting FastAPI Server on port 8000..."
     $env:PYTHONUNBUFFERED = "1"
+    $env:PYTHONIOENCODING = "utf-8"
     
     # Start python backend
     # Assumes python is in PATH

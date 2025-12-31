@@ -87,30 +87,28 @@ def node_router(state: AgentState):
 
         사용자의 질문을 다음 4가지 카테고리 중 하나로 분류하십시오:
         1. 'chat': 일상 대화, 인사, 자기소개 또는 감사와 무관한 질문.
-        2. 'fast': 단순 정보 검색, 사실 조회, 리스트 요청.
-           - 예시: "근무태만 사례 3개만 찾아줘", "가스공사 사례 3개", "최신 2건".
-           - 사용자가 구체적인 개체나 숫자를 요구할 때 사용합니다.
-        3. 'deep': 복잡한 분석, 비교, 인과관계 분석 또는 보고서 작성을 위한 정보 탐색, **조언 요청**.
-           - 예시: "보고서 써야 하니까 횡령 관련 자료 다 가져와봐", "이 두 사례 비교해줘", "원인 분석해줘".
-           - **주의**: "보고서에 뭘 넣어야 할까?", "보고서 작성 시 유의할 점 알려줘" 등 조언 요청은 'deep'입니다.
-           - "보고서를 써야 하니까 X를 찾아줘"는 'report'가 아니라 'deep'(검색)입니다.
+        2. 'fast': **특정 감사 사례 데이터 검색**, 통계, 리스트 조회.
+           - 예시: "근무태만 사례 3개만 찾아줘", "가스공사 사례는?", "2024년 징계 건수".
+           - 사용자가 **"구체적인 개체(회사, 연도, 비위행위)"를 언급하며 사례 리스트를 요구**할 때 사용합니다.
+           - **주의**: "감사 절차", "규정", "방법"을 묻는 질문은 'fast'가 아닙니다 ('deep'입니다).
+        3. 'deep': **절차, 규정, 방법 설명**, 복잡한 분석, 보고서 작성을 위한 정보 탐색.
+           - 예시: "**일반적인 감사 진행 절차가 어떻게 돼?**", "횡령 시 처리 규정은?", "이 두 사례 비교해줘".
+           - 사용자가 **지식, 절차, 규정, 방법론**에 대해 물으면 무조건 'deep'입니다.
+           - "보고서를 써야 하니까 자료 찾아줘"는 'report'가 아니라 'deep'입니다.
         4. 'report': 사용자가 지금 즉시 실제 감사 보고서를 **작성**, **초안 생성**하라고 명시적으로 요청함.
-           - 예시: "방금 찾은 2번 사례로 보고서 초안 작성해줘", "내용은 충분한 것 같아. 이제 보고서 뽑아줘".
-           - **명시적 정보 제공**: 사용자가 구체적인 세부 정보(일자, 금액, 내용)를 제공하고 작성을 요청하거나, 봇의 질문에 답하여 정보를 채워주는 경우.
-           - **주의**: "보고서 쓰려면 뭐가 필요해?", "어떤 정보를 줘야 해?" 같은 *준비 질문*은 'report'가 아닙니다 ('deep' 권장).
+           - 예시: "방금 찾은 사례로 보고서 써줘", "이대로 보고서 작성해".
 
         [주제 전환 판단 (Pivot Detection)]
         사용자가 완전히 새로운 주제(새로운 개체, 새로운 회사)로 전환하는지, 아니면 이전 맥락에 대한 후속 질문인지 판단하십시오.
         - "가스공사 사례 3개" -> 새로운 주제: True
         - "첫 번째 사례에 대해 더 말해줘" -> 새로운 주제: False
-        - "이걸로 보고서 써줘" -> 새로운 주제: False (기존 맥락 사용)
+        - "감사 절차는?" (지식 질문) -> 새로운 주제: True (False여도 상관없으나 보통 독립적 질문)
 
         [출력 형식]
         다음 형식의 한 줄로 반환하십시오: Category | NewTopic(True/False)
         예시 1: fast | True
-        예시 2: fast | False
-        예시 3: deep | False
-        예시 4: report | False
+        예시 2: deep | False
+        예시 3: report | False
         """
 
         prompt = ChatPromptTemplate.from_messages(
@@ -231,9 +229,9 @@ def route_retrieval(state: AgentState):
     is_success = state.get("grade_status", "no")
     retry_count = state.get("retrieval_count", 0)
 
-    # [Optimization] Max Retries Reduced 3 -> 2
-    if is_success == "yes" or retry_count >= 2:
-        if retry_count >= 2:
+    # [Optimization] Max Retries Reduced to 1 for Speed
+    if is_success == "yes" or retry_count >= 1:
+        if retry_count >= 1:
             logger.info(" -> [Stop] Max retries reached. Proceeding to SOP.")
         return "sop_retriever"
     else:
@@ -244,8 +242,8 @@ def route_retrieval(state: AgentState):
 def route_verification(state: AgentState):
     """Self-RAG 로직: 환각 및 유용성 검증 후 재시도 여부 결정."""
     reflection_count = state.get("reflection_count", 0)
-    # [Optimization] Max Retries Reduced 3 -> 2
-    if reflection_count >= 2:
+    # [Optimization] Max Retries Reduced to 1 for Speed
+    if reflection_count >= 1:
         logger.info(" -> [Stop] Max reflection reached.")
         return END
 

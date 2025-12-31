@@ -556,29 +556,33 @@ function Typewriter({ text, onComplete }: { text: string; onComplete?: () => voi
         if (!text) { setDisplayedText(''); indexRef.current = 0; return; }
         if (displayedText === text) return;
 
-        // Fast forward if text grew significantly (paste or big chunk)
-        if (text.length - indexRef.current > 50) {
+        // [Fix] Instant render for very long text to prevent truncation/slow feel
+        if (text.length > 500) {
             setDisplayedText(text);
             indexRef.current = text.length;
+            if (onComplete) onComplete();
             return;
         }
 
+        // [Fix] Dynamic chunk size for medium length text
+        const baseSpeed = 15;
+        const dynamicChunk = Math.max(2, Math.floor(text.length / 50));
+
         const interval = setInterval(() => {
             if (indexRef.current < text.length) {
-                const chunkSize = Math.floor(Math.random() * 3) + 1; // Slower, more natural typing
-                const nextIndex = Math.min(indexRef.current + chunkSize, text.length);
+                const nextIndex = Math.min(indexRef.current + dynamicChunk, text.length);
                 setDisplayedText(text.substring(0, nextIndex));
                 indexRef.current = nextIndex;
             } else {
                 clearInterval(interval);
                 if (onComplete) onComplete();
             }
-        }, 15);
+        }, baseSpeed);
         return () => clearInterval(interval);
     }, [text]);
 
     return (
-        <div className="markdown-prose">
+        <div className="markdown-prose break-words">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                 {displayedText}
             </ReactMarkdown>

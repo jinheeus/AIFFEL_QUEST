@@ -132,7 +132,6 @@ async def event_generator(
 
                 # 2. If Final Answer is ready
                 # [UX Fix] Only stream answer if it comes from a TERMINAL node or explicitly marked verification pass.
-                # Nodes that mean the answer is truly final and safe to show:
                 safe_answer_nodes = [
                     "chat_worker",  # Simple chat, always final
                     "summarize_conversation",  # End of RAG flow
@@ -140,9 +139,6 @@ async def event_generator(
                 ]
 
                 # Special Case: If we are in 'fast' mode, 'generate' IS final because we skip verification.
-                # However, the graph structure sends 'generate' -> 'summarize_conversation' anyway.
-                # So waiting for 'summarize_conversation' is safer/cleaner.
-
                 if key in safe_answer_nodes:
                     # We need to dig the answer from the state.
                     if "answer" in value and value["answer"]:

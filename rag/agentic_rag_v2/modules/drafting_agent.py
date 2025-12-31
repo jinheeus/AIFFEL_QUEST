@@ -16,7 +16,9 @@ class DraftingAgent:
     def __init__(self):
         # 복잡한 지시 이행을 위해 Reasoning Model (HCX-007) 사용
         self.llm = ModelFactory.get_rag_model(level="reasoning", temperature=0.1)
-        self.checker_llm = ModelFactory.get_rag_model(level="light", temperature=0.0)
+        self.checker_llm = ModelFactory.get_rag_model(
+            level="reasoning", temperature=0.0
+        )
 
     def analyze_requirements(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         """
@@ -31,34 +33,39 @@ class DraftingAgent:
             formatted_history += f"[{role}]: {msg['content']}\n\n"
 
         system_prompt = """
-        당신은 보고서 요건 분석가(Request Analyst)입니다.
+        당신은 "깐깐한" 보고서 요건 분석가(Request Analyst)입니다.
         대화 내역을 분석하여 감사 보고서 작성에 필요한 필수 정보가 포함되어 있는지 확인하십시오.
 
-        [판단 기준 - Interactive Mode]
-        - 필수 항목(사건 제목, 대상 기관, 문제점) 중 2개 이상이 누락되었거나, 대화 내용이 턱없이 부족하면 "status": "missing_info"를 반환하여 사용자에게 되물으십시오.
-        - 단, 사용자가 "그냥 써줘", "임의로 작성해", "알아서 해"라고 강제하거나 정보가 80% 이상 충족되면 "status": "ready"로 진행하십시오.
-
-        [데이터 소스 규칙]
-        - **사용자가 제공한 모든 정보를 고려하십시오.**
-        - 사용자가 "위 사례를 사용해" 또는 "위와 비슷하게"라고 하면, 어시스턴트의 맥락을 사용하는 것을 허용하십시오.
+        [판단 기준 - Interactive Mode (Strict)]
+        1. **추론 금지**: 사용자가 "감사 방법은 ~이다", "기간은 ~이다"라고 **명시적**으로 말하지 않았다면, 대화 맥락상 유추 가능하더라도 **"누락됨"**으로 간주하십시오.
+           - 예: "관계자 면담을 했다"는 대화가 있어도, 사용자가 "감사 방법은 면담이다"라고 정의하지 않았다면 '감사 방법'은 누락된 상태입니다.
+        2. **Status 결정**:
+           - 필수 항목 중 하나라도 누락되면 기본적으로 "status": "missing_info"를 반환하십시오.
+           - **단, 사용자가 "부족한 정보는 없다", "이대로 작성해", "그냥 써줘", "알아서 해"라고 강하게 요청(확언)하면, 정보가 부족하더라도 반드시 "status": "ready"로 진행하십시오.** (이 규칙이 최우선입니다.)
 
         [확인할 필수 항목]
         1. 사건 제목
-        2. 감사 배경
-        3. 감사 목적
-        4. 감사 방법
-        5. 감사 기간
+        2. 감사 배경 (6하원칙)
+        3. 감사 목적 (명시적 진술 필요)
+        4. 감사 방법 (명시적 진술 필요)
+        5. 감사 기간 (YYYY-MM-DD 형식 등 명시 필요)
         6. 대상 기관
         7. 문제점/지적사항
 
         다음 필드를 포함한 JSON 객체를 반환하십시오:
         - "missing_fields": 누락된 필드 이름 리스트 (한국어).
-        - "status": 항상 "ready". (플레이스홀더를 사용하여 진행하므로).
+        - "status": 필수 항목이 모두 충족되거나 사용자가 강제하면 "ready", 아니면 "missing_info".
 
-        예시 JSON:
+        예시 JSON (정보 부족 시):
+        {{
+            "status": "missing_info",
+            "missing_fields": ["감사 목적", "감사 방법", "감사 기간"]
+        }}
+
+        예시 JSON (사용자 강제 진행 시):
         {{
             "status": "ready",
-            "missing_fields": ["감사 기간", "대상 기관"]
+            "missing_fields": []
         }}
         """
 

@@ -60,7 +60,7 @@ def summarize_conversation(state: AgentState) -> dict:
     )
 
     # 3. LLM 호출 (Invoke LLM)
-    llm = ModelFactory.get_eval_model(level="light", temperature=0)
+    llm = ModelFactory.get_rag_model(level="heavy", temperature=0)
 
     prompt = ChatPromptTemplate.from_messages(
         [

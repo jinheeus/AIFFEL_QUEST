@@ -74,29 +74,30 @@ Data Range: 2021-01-04 to 2024-06-28
 {context}
 
 [규칙 - 핵심]
-1. "키워드 추출 및 필터링 (필수)":
+1. [CRITICAL] "날짜 필터링 필수 규칙":
+   - **절대로 `year()` 함수를 사용하지 마십시오.** (SQLite 미지원)
+   - 연도 검색 시 반드시 `strftime('%Y', date) = '2024'` 또는 `date LIKE '2024-%'` 형식을 사용하십시오.
+   - 예: `AND year(date) = 2024` (X) -> `AND date LIKE '2024-%'` (O)
+
+2. "키워드 추출 및 필터링 (필수)":
    - 사용자의 질문에서 '기관명'이 아닌 모든 핵심 명사(예: 횡령, 레일바이크, 안전, 계약 등)는 검색 키워드로 간주합니다.
    - 키워드가 발견되면 반드시 `WHERE` 절을 사용하여 `title`, `problem`, `cat`, `sub_cat` 컬럼에서 `LIKE` 검색을 수행하십시오.
    - 예: "레일바이크 관련 3개" -> `WHERE (title LIKE '%레일바이크%' OR problem LIKE '%레일바이크%' OR cat LIKE '%레일바이크%' OR sub_cat LIKE '%레일바이크%')`
 
-2. "최신/최근(latest/recent) 정렬":
+3. "최신/최근(latest/recent) 정렬":
    - "최신", "최근", 혹은 단순히 결과의 순서가 중요해 보이는 경우 `ORDER BY date DESC`를 추가하십시오.
    - 단, `ORDER BY`가 `WHERE` 필터링을 생략하는 이유가 되어서는 안 됩니다.
 
-3. "개수 제한 (LIMIT)":
+4. "개수 제한 (LIMIT)":
    - "n개 알려줘", "n건" 등의 요청이 있으면 쿼리 맨 마지막에 `LIMIT n`을 붙이십시오.
 
-4. "단순성 및 정확성":
+5. "단순성 및 정확성":
    - 사용자가 언급한 키워드는 하나도 빠짐없이 `WHERE` 절에 반영해야 합니다. 
    - '최신 3개'라고 해서 키워드 없이 전체에서 3개만 가져오는 오류를 범하지 마십시오.
 
-[SQLite 구문 규칙]
-- `year()` 사용 금지, `date LIKE '2023-%'` 또는 `strftime('%Y', date) = '2023'` 사용.
-- `LIMIT`는 항상 `ORDER BY` 뒤에 위치.
-- 세미콜론은 전체 쿼리 끝에 한 번만.
-- 모든 SQL은 반드시 다음 순서에 맞춰 조립하십시오:
+[SQLite 구문 순서]
     SELECT * FROM audits
-    WHERE (키워드 필터링)
+    WHERE (키워드/날짜 필터링)
     ORDER BY date DESC (최신순 요청 시)
     LIMIT n (개수 요청 시 - 무조건 마지막)
 
@@ -120,8 +121,35 @@ SQL Query:
             return []
 
     def _clean_sql(self, sql: str) -> str:
-        """Removes markdown and whitespace."""
-        sql = sql.replace("```sql", "").replace("```", "").strip()
+        sql = sql.strip()
+
+        # [Sanitization] Remove Markdown code blocks
+        if "```sql" in sql:
+            sql = sql.split("```sql")[1].split("```")[0].strip()
+        elif "```" in sql:
+            sql = sql.strip("```").strip()
+
+        # [Sanitization] Remove Comments (--) and Explanations
+        # Split by newline and keep only lines that look like SQL
+        # Also remove any text after the first semicolon
+        cleaned_lines = []
+        for line in sql.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("--"):
+                continue
+            # Remove inline comments
+            if "--" in line:
+                line = line.split("--")[0].strip()
+            cleaned_lines.append(line)
+
+        sql = " ".join(cleaned_lines)
+
+        # Truncate after semicolon if multiple statements exist
+        if ";" in sql:
+            sql = sql.split(";")[0] + ";"
+
         return sql
 
     def retrieve(

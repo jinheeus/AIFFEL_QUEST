@@ -111,7 +111,8 @@ export default function Home() {
         setCurrentThoughts([]);
 
         try {
-            const response = await fetch('http://localhost:8000/chat', {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const response = await fetch(`${apiUrl}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -200,7 +201,8 @@ export default function Home() {
         setUserInputs({}); // Reset previous inputs if any
 
         try {
-            const res = await fetch('http://localhost:8000/check_report_readiness', {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/check_report_readiness`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -231,7 +233,8 @@ export default function Home() {
         // Keep UI loading state sync
 
         try {
-            const res = await fetch('http://localhost:8000/generate_report', {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/generate_report`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -229,11 +229,14 @@ def route_retrieval(state: AgentState):
     is_success = state.get("grade_status", "no")
     retry_count = state.get("retrieval_count", 0)
 
-    # [Optimization] Max Retries Reduced to 1 for Speed
+    # [Fix] Bypass SOP Retriever. Go directly to Generator for better list handling.
+    # SOP Retriever aggregates everything into one fact, which is bad for "List N cases".
     if is_success == "yes" or retry_count >= 1:
         if retry_count >= 1:
-            logger.info(" -> [Stop] Max retries reached. Proceeding to SOP.")
-        return "sop_retriever"
+            logger.info(
+                " -> [Stop] Max retries reached. Proceeding to Answer Generation."
+            )
+        return "generate"
     else:
         logger.info(" -> [Loop] Retrieval Bad. Rewriting Query.")
         return "rewrite_query"

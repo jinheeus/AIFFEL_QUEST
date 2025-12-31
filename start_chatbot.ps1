@@ -28,11 +28,11 @@ try {
     $backendProcess = Start-Process -FilePath "python" `
         -ArgumentList "web_app/backend/main.py" `
         -RedirectStandardOutput "backend.log" `
-        -RedirectStandardError "backend.log" `
+        -RedirectStandardError "backend.err.log" `
         -PassThru `
         -NoNewWindow
     
-    Write-Host "   -> Backend running (PID: $($backendProcess.Id)). Logs at backend.log"
+    Write-Host "   -> Backend running (PID: $($backendProcess.Id)). Logs at backend.log / backend.err.log"
 
     # 2. Start Frontend
     Write-Host "🔹 [Frontend] Starting Next.js App on port 3000..."
@@ -49,11 +49,11 @@ try {
         -ArgumentList "run dev" `
         -WorkingDirectory "web_app/frontend" `
         -RedirectStandardOutput "../../frontend.log" `
-        -RedirectStandardError "../../frontend.log" `
+        -RedirectStandardError "../../frontend.err.log" `
         -PassThru `
         -NoNewWindow
     
-    Write-Host "   -> Frontend running (PID: $($frontendProcess.Id)). Logs at frontend.log"
+    Write-Host "   -> Frontend running (PID: $($frontendProcess.Id)). Logs at frontend.log / frontend.err.log"
 
     Write-Host "✅ System is UP!"
     Write-Host "   - Frontend: http://localhost:3000"

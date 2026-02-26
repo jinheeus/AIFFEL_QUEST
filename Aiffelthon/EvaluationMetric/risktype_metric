@@ -1,0 +1,173 @@
+import pandas as pd
+import requests
+import json
+import os
+import uuid
+from dotenv import load_dotenv
+from tqdm import tqdm
+
+# ==============================================================================
+# 1. 환경 설정
+# ==============================================================================
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(current_dir)
+env_path = os.path.join(root_dir, '.env')
+
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path)
+
+CLOVA_API_KEY = os.getenv("CLOVASTUDIO_API_KEY") or os.getenv("NCP_CLOVASTUDIO_API_KEY")
+API_URL = os.getenv("NCP_CLOVASTUDIO_URL") or "https://clovastudio.stream.ntruss.com/testapp/v1/chat-completions/HCX-003"
+
+if not CLOVA_API_KEY:
+    print("❌ API Key가 없습니다. .env 파일을 확인해주세요.")
+    exit()
+
+# ==============================================================================
+# 2. System Prompt (v42 Final: 단위 환산 면죄부 추가)
+# ==============================================================================
+system_prompt = """
+당신은 공공기관 감사 보고서의 데이터 정합성을 검증하는 유연한 AI 감사관입니다.
+주어진 [원문]을 보고 추출된 [데이터]의 '금액'과 '분류'가 타당한지 검증하세요.
+
+[검증 기준 - 관대함 적용]
+1. Amount (금액 정합성) - Fact Exist Check
+   - [최우선 원칙] 추출된 숫자가 원문에 문자 그대로 존재한다면 무조건 '정답(O)'입니다.
+   - 원문에 없는 숫자라도, 문맥상 '총액 - 내역' 계산을 통해 도출된 잔액으로 추정되면 정답으로 인정하세요.
+
+2. Unit Conversion (단위 환산 필독)
+   - [핵심] 원문에 '천원', '백만원' 등의 단위가 쓰인 경우, 추출 데이터는 이를 숫자로 환산한 값입니다.
+   - 예1: 원문 "10천원" -> 데이터 "10,000" (일치함 / 정답 O)
+   - 예2: 원문 "15백만원" -> 데이터 "15,000,000" (일치함 / 정답 O)
+   - 숫자 모양이 다르다고 해서 오답 처리하지 마세요. 단위 환산이 맞으면 정답입니다.
+
+3. Type & Class (분류 적절성) - 문맥 존중
+   - Money Type: '환수'와 '감액'은 문맥에 따라 혼용될 수 있으므로, 제재의 성격이 있다면 둘 다 정답으로 폭넓게 인정하세요.
+   - Target Class: '대외(업체)' vs '대내(직원)' 분류가 논리적이면 인정하세요.
+
+[주의] '주체(Subject)' 명칭은 검증하지 마세요 (Skip).
+
+[답변 형식]
+반드시 아래 JSON 포맷으로만 응답하세요.
+{
+  "judgment": "O" 또는 "X",
+  "reason": "오답인 경우 구체적인 이유",
+  "wrong_fields": ["Amount", "Type", "Class"] 중 틀린 항목 리스트
+}
+"""
+
+def call_clova_hcx_comprehensive(user_prompt):
+    request_id = str(uuid.uuid4())
+    headers = {
+        "Authorization": f"Bearer {CLOVA_API_KEY}",
+        "X-NCP-CLOVASTUDIO-REQUEST-ID": request_id,
+        "Content-Type": "application/json; charset=utf-8",
+        "Accept": "text/event-stream"
+    }
+    
+    data = {
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "topP": 0.6, "topK": 0, "maxTokens": 512, "temperature": 0.1, "repeatPenalty": 5.0, "includeAiFilters": True
+    }
+
+    try:
+        response = requests.post(API_URL, headers=headers, json=data, stream=True)
+        if response.status_code == 200:
+            final_content = ""
+            is_result_event = False
+            for line in response.iter_lines():
+                if line:
+                    decoded = line.decode('utf-8')
+                    if decoded.startswith("event:result"): is_result_event = True
+                    if decoded.startswith("data:") and is_result_event:
+                        try:
+                            js = json.loads(decoded[5:])
+                            final_content = js["message"]["content"]
+                        except: continue
+            return final_content if final_content else "Error: No Content"
+        else:
+            return f"Error: {response.status_code}"
+    except Exception as e:
+        return f"Exception: {str(e)}"
+
+# ==============================================================================
+# 3. 검증 실행
+# ==============================================================================
+excel_filename = 'penalty_v42.xlsx' 
+file_path = os.path.join(current_dir, excel_filename)
+
+if not os.path.exists(file_path):
+    print(f"❌ '{excel_filename}' 파일이 없습니다. extract_v42.py를 먼저 실행하세요.")
+    exit()
+
+df = pd.read_excel(file_path)
+print(f"📂 v42 데이터 로드 완료: {len(df)}건")
+
+results = []
+reasons = []
+wrong_fields_list = []
+
+print("🚀 v42 최종 정밀 검증 시작 (HCX - 단위 환산 패치 적용)...")
+
+# tqdm으로 진행 상황 표시
+for index, row in tqdm(df.iterrows(), total=df.shape[0], ncols=100):
+    
+    user_prompt = f"""
+    [원문]
+    "{row.get('action', '')}"
+
+    [추출 데이터]
+    1. 금액: {row.get('amount', '')} 원
+    2. 유형: "{row.get('money_type', '')}"
+    3. 구분: "{row.get('target', '')}"
+    (참고용 주체: "{row.get('target_subject', '')}")
+    
+    위 데이터가 [검증 기준]에 부합합니까?
+    """
+    
+    response = call_clova_hcx_comprehensive(user_prompt)
+    
+    try:
+        clean_res = response.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(clean_res)
+        
+        results.append(parsed.get("judgment", "Error"))
+        reasons.append(parsed.get("reason", response))
+        
+        w_fields = parsed.get("wrong_fields", [])
+        if isinstance(w_fields, list):
+            wrong_fields_list.append(", ".join(w_fields))
+        else:
+            wrong_fields_list.append(str(w_fields))
+            
+    except:
+        results.append("ParseError")
+        reasons.append(response)
+        wrong_fields_list.append("ParseError")
+
+# ==============================================================================
+# 4. 결과 저장 및 리포트
+# ==============================================================================
+df['hcx_judgment'] = results
+df['hcx_reason'] = reasons
+df['wrong_fields'] = wrong_fields_list
+
+output_path = os.path.join(current_dir, 'penalty_verified_v42_hcx.xlsx')
+df.to_excel(output_path, index=False)
+
+o_cnt = df[df['hcx_judgment'] == 'O'].shape[0]
+x_cnt = df[df['hcx_judgment'] == 'X'].shape[0]
+total_cnt = o_cnt + x_cnt
+accuracy = (o_cnt / total_cnt * 100) if total_cnt > 0 else 0.0
+
+print(f"\n🎉 검증 완료! 저장됨: {output_path}")
+print("-" * 50)
+print(f"📊 HCX 통계: 정답(O) {o_cnt}건 ({accuracy:.1f}%) / 오답(X) {x_cnt}건")
+print("-" * 50)
+
+if x_cnt > 0:
+    print("\n🔍 주요 오답 필드 (Top 5):")
+    print(df[df['hcx_judgment'] == 'X']['wrong_fields'].value_counts().head(5))

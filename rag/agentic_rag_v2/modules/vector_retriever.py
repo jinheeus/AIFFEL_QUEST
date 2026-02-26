@@ -31,7 +31,7 @@ class VectorRetriever:
 
         # 1. 임베딩 모델 초기화 (Initialize Embeddings)
         self.embedding_model = ClovaXEmbeddings(model=Config.EMBEDDING_MODEL)
-        self.collection_name = "audit_rag_hybrid_v1"
+        self.collection_name = "audit_v10_collection"
 
         # 2. Milvus 클라이언트 설정
         # BM25 로딩을 위한 Pymilvus
@@ -74,11 +74,11 @@ class VectorRetriever:
             while True:
                 res = self.milvus_client.query(
                     collection_name=self.collection_name,
-                    filter="id >= 0",
+                    filter='pk >= ""',
                     # Explicitly list fields to EXCLUDE 'vector' (which causes gRPC limit errors)
                     output_fields=[
-                        "id",
-                        "text",
+                        "pk",
+                        "doc_text",
                         "parent_text",
                         "source_type",
                         "idx",
@@ -88,8 +88,9 @@ class VectorRetriever:
                         "category",
                         "cat",
                         "sub_cat",
-                        "company_code",
-                        "company_name",
+                        "site",
+                        "title",
+                        "outline",
                     ],
                     limit=limit,
                     offset=offset,
@@ -130,36 +131,89 @@ class VectorRetriever:
                 return
             except Exception as e:
                 logger.warning(f"Cache load failed ({e}). Rebuilding...")
+        
+        raw_docs = []
+            
+            # 2. Rebuild Index (If cache missing or failed)
+        try:  
+            raw_docs = self._load_documents_from_milvus()
+        except Exception as e:
+            logger.warning(f"Milvus load failed: {e}")
 
-        # 2. Rebuild Index (If cache missing or failed)
-        raw_docs = self._load_documents_from_milvus()
+            # --- Fallback: Load from JSON files if Milvus is empty ---
+        if not raw_docs:
+            logger.warning("⚠️ Milvus empty. Falling back to local JSON data.")
 
+            import json
+
+            data_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "agentic_rag_v2",
+                "data",
+            )
+
+                
+            for fname in os.listdir(data_dir):
+                if fname.endswith(".json"):
+                   path = os.path.join(data_dir, fname)
+                   with open(path, "r", encoding="utf-8") as f:
+                       raw_docs.extend(json.load(f))
+
+            logger.info(f"Loaded {len(raw_docs)} docs from JSON fallback.")
+        
+        if not raw_docs:
+            logger.error("No documents available for BM25. Abort initialization.")
+            self.bm25 = None
+            return
+        
         self.bm25_corpus = []
         self.bm25_docs = []
         self.id_to_doc = {}
 
         for d in raw_docs:
-            text = d.get("text", "")
+            text = d.get("doc_text")
+            if not text:
+                text = "\n".join(
+                    [
+                        d.get("title", ""),
+                        d.get("outline", ""),
+                        d.get("problems", ""),
+                        d.get("opinion",""),
+                        d.get("criteria",""),
+                        d.get("action", ""),
+                    ]
+                ).strip()
+
+            if not text:
+                continue
             # d is the full entity dict. Convert it to metadata.
             # Pop vector if present to save memory (though output_fields=["*"] usually excludes vector unless asked, wait, * includes vector in some ver, but let's be safe).
             if "vector" in d:
                 del d["vector"]
 
             # Use 'id' as doc_id
-            doc_id = d.get("id", "unknown")
+            doc_id = d.get("pk") or d.get("idx")
 
-            if doc_id == "unknown" and len(self.bm25_corpus) < 3:
+            if not doc_id and len(self.bm25_corpus) < 3:
                 logger.warning(f"ID missing for doc. Keys: {d.keys()}")
 
             # Tokenize
             tokens = [t.form for t in self.tokenizer.tokenize(text)]
+            
+            if not tokens:
+                continue
+
             self.bm25_corpus.append(tokens)
 
             # Doc Object (Metadata = All fields)
+            d["source"] = "audit_v10.json"
+
             doc_obj = Document(
                 page_content=text,
-                metadata=d,  # Pass full dictionary as metadata
+                metadata=d, # Pass full dictionary as metadata
             )
+
+            print(doc_obj.metadata)
             self.bm25_docs.append(doc_obj)
 
             # Fast Lookup

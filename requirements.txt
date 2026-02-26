@@ -22,4 +22,13 @@ langchain-milvus
 rank-bm25
 kiwipiepy
 
+# 시각화 및 UI 관련
+plotly>=5.0.0
+streamlit>=1.31.0
 
+# 서버 통신 및 API 관련
+requests>=2.32.3
+sseclient-py>=1.7.0
+
+# 데이터 처리 보완
+pandas>=2.0.0

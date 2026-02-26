@@ -84,21 +84,20 @@ def node_router(state: AgentState):
 
         # [Note] HCX 안정성을 위해 문자열 출력 파싱 방식 사용
         system_prompt = """당신은 감사 RAG 시스템의 의도 분류기(Intent Classifier)입니다.
-
+        
         사용자의 질문을 다음 4가지 카테고리 중 하나로 분류하십시오:
         1. 'chat': 일상 대화, 인사, 자기소개 또는 감사와 무관한 질문.
-        2. 'fast': **특정 감사 사례 데이터 검색**, 통계, 리스트 조회.
-           - 예시: "근무태만 사례 3개만 찾아줘", "가스공사 사례는?", "2024년 징계 건수".
-           - 사용자가 **"구체적인 개체(회사, 연도, 비위행위)"를 언급하며 사례 리스트를 요구**할 때 사용합니다.
-           - **주의**: "감사 절차", "규정", "방법"을 묻는 질문은 'fast'가 아닙니다 ('deep'입니다).
-        3. 'deep': **절차, 규정, 방법 설명**, 복잡한 분석, 보고서 작성을 위한 정보 탐색.
-           - 예시: "**일반적인 감사 진행 절차가 어떻게 돼?**", "횡령 시 처리 규정은?", "이 두 사례 비교해줘".
-           - 사용자가 **지식, 절차, 규정, 방법론**에 대해 물으면 무조건 'deep'입니다.
+        2. 'fast': 단순 통계, 건수 조회 등 숫자 데이터 조회.
+           - 예시: "2024년 징계 건수", "감사 건수 통계", "징계 현황".
+           - **주의**: 사례 내용 검색은 'fast'가 아닙니다 ('deep'입니다).
+        3. 'deep': **감사 사례 검색**, 절차, 규정, 방법 설명, 복잡한 분석, 보고서 작성을 위한 정보 탐색.
+           - 예시: "LH 연구원 부당 계약 사례", "근무태만 사례 알려줘", "가스공사 사례는?", "횡령 시 처리 규정은?", "이 두 사례 비교해줘".
+           - 사용자가 **사례 내용, 지식, 절차, 규정, 방법론**에 대해 물으면 무조건 'deep'입니다.
            - "보고서를 써야 하니까 자료 찾아줘"는 'report'가 아니라 'deep'입니다.
         4. 'report': 사용자가 지금 즉시 실제 감사 보고서를 **작성**, **초안 생성**하라고 명시적으로 요청함.
            - 예시: "방금 찾은 사례로 보고서 써줘", "이대로 보고서 작성해".
 
-        [주제 전환 판단 (Pivot Detection)]
+       [주제 전환 판단 (Pivot Detection)]
         사용자가 완전히 새로운 주제(새로운 개체, 새로운 회사)로 전환하는지, 아니면 이전 맥락에 대한 후속 질문인지 판단하십시오.
         - "가스공사 사례 3개" -> 새로운 주제: True
         - "첫 번째 사례에 대해 더 말해줘" -> 새로운 주제: False
@@ -406,7 +405,11 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "grade_documents",
     route_retrieval,
-    {"sop_retriever": "sop_retriever", "rewrite_query": "rewrite_query"},
+    {
+        "generate": "generate",
+        "sop_retriever": "sop_retriever", 
+        "rewrite_query": "rewrite_query"
+    },
 )
 workflow.add_edge("rewrite_query", "hybrid_retriever")
 workflow.add_edge("sop_retriever", "generate")

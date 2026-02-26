@@ -131,6 +131,9 @@ async def event_generator(
         # Use astream to get async node updates
         # [Fix] Increase recursion limit for complex RAG flows
         config["recursion_limit"] = 50
+        
+        import time
+        start_total = time.time()
         async for output in rag_app.astream(inputs, config=config):
             for key, value in output.items():
                 print(f"[API Log] Node Completed: {key}")
@@ -156,7 +159,10 @@ async def event_generator(
                     # [New] Command Handling
                     if "command" in value and value["command"]:
                         yield f"data: {json.dumps({'type': 'command', 'content': value['command']})}\n\n"
-
+        
+        end_total = time.time()
+        print("🔥 TOTAL RAG TIME:", end_total - start_total)
+        
         yield "data: [DONE]\n\n"
 
     except Exception as e:

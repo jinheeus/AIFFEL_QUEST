@@ -1,5 +1,7 @@
 'use client';
 
+console.log('API URL:', process.env.NEXT_PUBLIC_API_URL);
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, ChevronDown, ChevronRight, Loader2, BookOpen, RefreshCw, X, AlertTriangle, Edit3, Save, FileText, Copy, Check, Maximize2, Minimize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -126,55 +128,68 @@ export default function Home() {
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            let assistantMsg: Message = { role: 'assistant', content: '', thoughtProcess: [] };
+            let buffer = "";
 
-            setMessages(prev => [...prev, assistantMsg]);
+            const assistantMsg: Message = { role: 'assistant', content: '', thoughtProcess: [] };
+            setMessages(prev => [
+                ...prev,
+                assistantMsg
+            ]);
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n\n');
+                const chunk = decoder.decode(value, { stream: true});
+                buffer += chunk;
+                
+                const parts = buffer.split("\n\n")
+                buffer = parts.pop() || "";
 
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const dataStr = line.replace('data: ', '').trim();
-                        if (dataStr === '[DONE]') {
-                            setIsLoading(false);
-                            break;
+                for (const part of parts) {
+                    if (!part.startsWith('data: ')) continue;
+            
+        const dataStr = part.replace("data: ", "").trim();
+
+        if (dataStr === "[DONE]") {
+            setIsLoading(false);
+            continue;
+        }
+            try {
+                const data = JSON.parse(dataStr);
+                if (data.type === 'status') {
+                    setCurrentThoughts(prev => {
+                        const exists = prev.find(t => t.node === data.node);
+                        if (!exists && data.node) {
+                            return [...prev, { node: data.node, content: data.content, status: 'done' }];
                         }
+                        return prev;
+                    });
+                } else if (data.type === 'answer') {
+                    assistantMsg.content += data.content;
 
-                        try {
-                            const data = JSON.parse(dataStr);
-                            if (data.type === 'status') {
-                                setCurrentThoughts(prev => {
-                                    const exists = prev.find(t => t.node === data.node);
-                                    if (!exists && data.node) {
-                                        return [...prev, { node: data.node, content: data.content, status: 'done' }];
-                                    }
-                                    return prev;
-                                });
-                            } else if (data.type === 'answer') {
-                                assistantMsg.content = data.content;
-                                setMessages(prev => {
-                                    const newMsgs = [...prev];
-                                    newMsgs[newMsgs.length - 1] = { ...assistantMsg, thoughtProcess: [...currentThoughts] };
-                                    newMsgs[newMsgs.length - 1] = { ...assistantMsg, thoughtProcess: [...currentThoughts] };
-                                    return newMsgs;
-                                });
-                            } else if (data.type === 'command') {
-                                // [New] Handle Commands (e.g., Open Report)
-                                if (data.content === 'open_report') {
-                                    if (!showReport) setShowReport(true);
-                                    // Optionally trigger check immediately
-                                    setTimeout(() => checkReadiness(), 500);
-                                }
-                            }
-                        } catch (err) { }
+                    setMessages(prev => {
+                        const newMsgs = [...prev];
+                        newMsgs[newMsgs.length - 1] = {
+                             ...newMsgs[newMsgs.length - 1],
+                        };
+                        return newMsgs;
+                    });
+                } else if (data.type === 'command') {
+                    // [New] Handle Commands (e.g., Open Report)
+                    if (data.content === 'open_report') {
+                        if (!showReport) setShowReport(true);
+                        // Optionally trigger check immediately
+                        setTimeout(() => checkReadiness(), 500);
                     }
                 }
+            } catch (err) {
+                // 오류 발생 시 무시 (파싱 실패 등)
+                // 필요시 로깅 추가 가능
+                // console.error('JSON 파싱 오류:', err);
             }
+        }
+    }
             // Finalize thoughts
             setMessages(prev => {
                 const newMsgs = [...prev];
@@ -212,13 +227,25 @@ export default function Home() {
                 }),
             });
             const data = await res.json();
+            console.log('CHAT RESPONSE:', data);
 
             if (data.status === 'missing_info') {
                 setMissingFields(data.missing_fields || []);
                 setReportState('missing_info');
             } else {
-                // Ready, proceed to generate
-                generateReport({});
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        role: 'assistant',
+                        content:
+                            data.content ||
+                            data.answer ||
+                            data.response ||
+                            data.result?.final_answer ||
+                            data.message ||
+                            '응답을 생성했지만 내용을 찾을 수 없어요.'
+                    }
+                ]);
             }
         } catch (error) {
             console.error("Readiness Check Error:", error);

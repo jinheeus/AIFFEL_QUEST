@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from common.model_factory import ModelFactory
@@ -101,6 +101,7 @@ class DraftingAgent:
         messages: List[Dict[str, str]],
         retrieved_docs: List[Any],
         additional_info: Dict[str, str] = None,
+        dashboard_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Generates a structured audit report with strict Source A vs Source B separation.
@@ -129,6 +130,35 @@ class DraftingAgent:
                 [f"- {k}: {v}" for k, v in additional_info.items()]
             )
 
+        # 4. Format Dashboard Context (Source C)
+        dashboard_context_str = "(대시보드 필터 정보 없음)"
+        if dashboard_context:
+            lines = []
+            if dashboard_context.get("기관"):
+                orgs = dashboard_context["기관"]
+                if isinstance(orgs, list):
+                    orgs = ", ".join([o for o in orgs if o != "전체"]) or "전체"
+                lines.append(f"- 조회 기관: {orgs}")
+            if dashboard_context.get("기간"):
+                lines.append(f"- 조회 기간: {dashboard_context['기간']}")
+            if dashboard_context.get("감사유형"):
+                at = dashboard_context["감사유형"]
+                if isinstance(at, list):
+                    at = ", ".join([a for a in at if a != "전체"]) or "전체"
+                lines.append(f"- 감사 유형: {at}")
+            if dashboard_context.get("기관유형"):
+                ot = dashboard_context["기관유형"]
+                if isinstance(ot, list):
+                    ot = ", ".join([o for o in ot if o != "전체"]) or "전체"
+                lines.append(f"- 기관 유형: {ot}")
+            if dashboard_context.get("위반유형"):
+                lines.append(f"- 주요 위반 유형: {dashboard_context['위반유형']}")
+            if dashboard_context.get("처분수위"):
+                lines.append(f"- 처분 수위: {dashboard_context['처분수위']}")
+            if dashboard_context.get("총건수"):
+                lines.append(f"- 조회 총 건수: {dashboard_context['총건수']}건")
+            dashboard_context_str = "\n".join(lines) if lines else "(대시보드 필터 정보 없음)"
+
         system_prompt = """
 [Role]
 당신은 대한민국 감사원(BAI) 표준 양식을 준수하는 '공공감사 보고서 작성 전문 에이전트'입니다.
@@ -138,15 +168,19 @@ class DraftingAgent:
 1. **Source A (Fact - 최우선)**: {history} 및 {additional_info}
    - 보고서의 모든 '사실관계(성명, 금액, 일자, 장소)'는 오직 여기서만 가져옵니다.
    - 정보가 없으면 임의 생성하지 말고 [확인 필요]로 표기하십시오.
-   - **주의**: '김과장', '약 90만원', '전철 이용' 외의 정보는 모두 [미정] 상태입니다.
 
 2. **Source B (Logic/Law - 참고용)**: {references}
-   - **[절대 금지]**: Source B에 등장하는 숫자(916,000원 등), 부서명(영업팀 등), 날짜를 Source A의 사건에 대입하지 마십시오.
-   - **[허용 범위]**: 관련 법령(국고금 관리법 등), 처벌 수위(정직, 감봉 등), 재발 방지 대책의 '논리적 구조'만 참고하십시오.
+   - **[절대 금지]**: Source B에 등장하는 숫자, 부서명, 날짜를 Source A의 사건에 대입하지 마십시오.
+   - **[허용 범위]**: 관련 법령, 처벌 수위, 재발 방지 대책의 '논리적 구조'만 참고하십시오.
+
+3. **Source C (Dashboard Context - 현황 보완용)**: {dashboard_context}
+   - 현재 대시보드에서 조회 중인 기관·기간·감사유형 등 필터 현황입니다.
+   - Source A에 명시된 사실과 충돌하지 않는 범위에서 보고서의 '감사 배경' 및 '감사 범위' 섹션에 활용하십시오.
+   - Source C의 정보를 확정된 사실처럼 기술하지 말고, "대시보드 조회 기준" 또는 "분석 범위"로 표현하십시오.
 
 [Hallucination Guardrail]
-- 사용자가 "약 90만원"이라고 했다면, 절대로 "916,000원"이나 "900,000원"으로 확정 짓지 마십시오. "약 90만원 (확정 금액 조사 필요)"라고 기술하십시오.
-- 출처가 불분명한 '영업팀', '2024년 1월' 등의 단어가 포함될 경우 이는 실패한 보고서로 간주됩니다.
+- 출처가 불분명한 정보는 [확인 필요]로 표기하십시오.
+- Source B나 Source C의 내용을 Source A의 사실인 것처럼 기술하면 안 됩니다.
 
 [Report Format]
 # 감사 보고서
@@ -154,11 +188,13 @@ class DraftingAgent:
 ## 감사 실시 개요
 ### 감사 배경 및 목적
 #### 사건 제목
-- (Source A 기반: 예: 출장비 부당 수령 의혹 건)
+- (Source A 기반)
 #### 감사 배경
-- (Source A 기반: 자가용 이용 보고 후 대중교통 이용 등 실태 기술)
+- (Source A 기반 + Source C의 대시보드 조회 현황 참고)
 #### 감사 목적
-- (공공 예산 집행의 투명성 확보 및 부당 이득 환수)
+- (Source A 기반)
+#### 분석 범위 (대시보드 기준)
+- (Source C 기반: 조회 기관, 기간, 감사유형 등 명시)
 
 ### 감사 방법 및 기간
 #### 감사 방법
@@ -168,17 +204,17 @@ class DraftingAgent:
 
 ## 감사 결과
 #### 사건 개요
-- (누가, 무엇을 했는지 Fact 위주 기술. 금액은 '약 90만원' 유지)
+- (누가, 무엇을 했는지 Fact 위주 기술)
 #### 주요 문제점
-- (허위 보고를 통한 유류비 과다 청구 등 위반 사항)
+- (위반 사항 기술)
 #### 관련 법령 및 규정
-- (Source B에서 언급된 법령 적용: 예: 국고금 관리법, 공공기관 회계규정 등)
+- (Source B에서 언급된 법령 적용)
 #### 관계기관 의견 및 감사 판단
 - [피감사자 소명 및 기관 의견 확인 필요]
 #### 조치 사항
-- (Source B의 유사 수위를 참고하되, 이번 사건에 맞춰 제안: 예: 전액 환수 및 징계 검토)
+- (Source B의 유사 수위 참고)
 #### 개선 기준 및 재발 방지 대책
-- (Source B의 시스템적 개선안 참고: 예: 출장 증빙 강화, 모니터링 시스템 도입 등)
+- (Source B의 시스템적 개선안 참고)
 
 [Tone and Manner]
 - 문체는 "~함", "~임" 형태의 개조식 보고서 전문 용어 사용.
@@ -197,10 +233,13 @@ class DraftingAgent:
 ### [Source B: 참고용 유사 감사 사례 (RAG 결과)]
 {references}
 
+### [Source C: 대시보드 조회 현황 (분석 범위 참고)]
+{dashboard_context}
+
 ### [추가 요구사항]
 {additional_info}
 
-위 데이터를 바탕으로 감서 보고서 초안을 작성하십시오. Source B의 내용을 Source A인 것처럼 작성하면 안 됩니다.
+위 데이터를 바탕으로 감사 보고서 초안을 작성하십시오. Source B와 Source C의 내용을 Source A인 것처럼 작성하면 안 됩니다.
 """,
                 ),
             ]
@@ -214,6 +253,7 @@ class DraftingAgent:
                     "history": formatted_history,
                     "references": formatted_references,
                     "additional_info": add_info_str,
+                    "dashboard_context": dashboard_context_str,
                 }
             )
 

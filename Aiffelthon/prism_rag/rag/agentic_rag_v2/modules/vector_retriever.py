@@ -323,7 +323,7 @@ class VectorRetriever:
             # [Filters]
             # 날짜순 정렬(Latest)인 경우, 의미론적 점수(Semantic Score) 기준을 완화합니다.
             # "최신 사례"는 내용 연관성이 낮더라도 사용자의 시의성(Recency) 의도가 중요하기 때문입니다.
-            min_score = 0.35
+            min_score = 0.1
             if filters and filters.get("sort") == "date_desc":
                 logger.info(
                     "Sort='date_desc' detected. Lowering threshold to 0.1 to capture recent docs."

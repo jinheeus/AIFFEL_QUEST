@@ -72,9 +72,10 @@ async def startup_event():
 
 class ChatRequest(BaseModel):
     query: str
-    history: list = []  # (New) history input
-    session_id: str = "default_session"  # New: for persistent memory
-    additional_info: dict = {}  # New: for report generation inputs
+    history: list = []
+    session_id: str = "default_session"
+    additional_info: dict = {}
+    dashboard_context: dict = {}  # 대시보드 필터 현황
 
 
 NODE_NAMES = {
@@ -143,20 +144,33 @@ async def event_generator(
                 yield f"data: {json.dumps({'type': 'status', 'node': key, 'content': status_msg})}\n\n"
 
                 # 2. If Final Answer is ready
-                # [UX Fix] Only stream answer if it comes from a TERMINAL node or explicitly marked verification pass.
                 safe_answer_nodes = [
                     "chat_worker",  # Simple chat, always final
                     "summarize_conversation",  # End of RAG flow
                     "report_manager",  # Report ready signal
                 ]
 
-                # Special Case: If we are in 'fast' mode, 'generate' IS final because we skip verification.
                 if key in safe_answer_nodes:
                     # We need to dig the answer from the state.
                     if "answer" in value and value["answer"]:
                         yield f"data: {json.dumps({'type': 'answer', 'content': value['answer']})}\n\n"
+                        # 출처 문서 함께 전송
+                        docs = value.get("persist_documents") or value.get("documents") or []
+                        if docs:
+                            refs = []
+                            for doc in docs[:5]:
+                                if isinstance(doc, dict):
+                                    refs.append({
+                                        "title": doc.get("summary_title") or doc.get("title", ""),
+                                        "agency": doc.get("site") or doc.get("agency_category", ""),
+                                        "date": str(doc.get("date", ""))[:10],
+                                        "risk": doc.get("risk_category", ""),
+                                        "disposition": doc.get("disposition_level", ""),
+                                        "url": doc.get("download_url", ""),
+                                    })
+                            if refs:
+                                yield f"data: {json.dumps({'type': 'references', 'content': refs})}\n\n"
 
-                    # [New] Command Handling
                     if "command" in value and value["command"]:
                         yield f"data: {json.dumps({'type': 'command', 'content': value['command']})}\n\n"
         
@@ -224,10 +238,8 @@ async def generate_report_endpoint(request: ChatRequest):
     retriever = get_retriever()
 
     # 2. Construct Search Query for Context (Source B)
-    # Priority: Additional Info > Last User Message
     search_query = ""
     if request.additional_info:
-        # Combine key fields
         subjects = [
             request.additional_info.get("대상 기관", ""),
             request.additional_info.get("사건 제목", ""),
@@ -236,7 +248,6 @@ async def generate_report_endpoint(request: ChatRequest):
         search_query = " ".join([s for s in subjects if s]).strip()
 
     if not search_query and request.history:
-        # Fallback to last user message
         for msg in reversed(request.history):
             if msg["role"] == "user":
                 search_query = msg["content"]
@@ -260,10 +271,9 @@ async def generate_report_endpoint(request: ChatRequest):
         messages=request.history,
         retrieved_docs=retrieved_docs,
         additional_info=request.additional_info,
+        dashboard_context=request.dashboard_context,
     )
 
-    # Streaming response (simulating stream for UI consistency, or just text)
-    # Using simple text response for now as it's a single block generation
     return {"report": report_content}
 
 

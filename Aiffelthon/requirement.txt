@@ -1,0 +1,15 @@
+# 핵심 프레임워크
+streamlit>=1.31.0
+
+# 데이터 처리
+pandas>=2.0.0
+numpy>=1.24.0
+
+# 시각화 (Interactive Charts)
+plotly>=5.18.0
+
+# 네트워크 및 API 통신 (AI 챗봇 연동용)
+requests>=2.31.0
+
+# 날짜 및 데이터 타입 처리 (Standard library 외 보완)
+python-dateutil>=2.8.2

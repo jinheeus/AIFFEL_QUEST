@@ -43,7 +43,7 @@ prism_rag/
     ├── backend/
     │   └── main.py                             ✅ FastAPI 백엔드
     └── frontend/
-        └── app.py                              ✅ Streamlit 대시보드
+        └── app_final.py                              ✅ Streamlit 대시보드
 ```
 
 ---
@@ -219,7 +219,7 @@ INFO: Uvicorn running on http://0.0.0.0:8000
 새 터미널을 열고:
 ```bash
 source venv_aura/bin/activate
-streamlit run web_app/frontend/app.py
+streamlit run web_app/frontend/app_final.py
 ```
 
 브라우저에서 `http://localhost:8501` 접속 → **Section 3. AI 분석** 에서 테스트!
